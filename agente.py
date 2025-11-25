@@ -1,9 +1,5 @@
 import random
 
-# ==============================================================================
-# 1. CLASSE MÃE (Interface Genérica)
-# Define o que todos os agentes têm de ter, sejam burros ou inteligentes.
-# ==============================================================================
 class Agente:
     def __init__(self):
         self.ultima_observacao = None
@@ -11,7 +7,7 @@ class Agente:
 
     def observacao(self, obs):
         """
-        Recebe os dados do ambiente (Sensores).
+        Recebe os dados do ambiente (Sensores).z
         """
         self.ultima_observacao = obs
 
@@ -27,13 +23,10 @@ class Agente:
         Recebe o feedback (Recompensa) da última ação.
         """
         self.recompensa_total += recompensa
-        # Opcional: podes descomentar para ver o score a mudar em tempo real
-        # print(f"Score atual: {self.recompensa_total}")
 
-# ==============================================================================
-# 2. AGENTE DE TESTE (Random Walk)
-# Serve apenas para validar a simulação na Fase 1.
-# ==============================================================================
+        print(f"Score atual: {self.recompensa_total}")
+
+
 class AgenteRandom(Agente):
     def __init__(self):
         super().__init__()
@@ -41,9 +34,6 @@ class AgenteRandom(Agente):
         self.accoes = ["Norte", "Sul", "Este", "Oeste"]
 
     def age(self):
-        """
-        Comportamento: Escolhe uma direção totalmente à sorte.
-        Ignora a observação (é cego).
-        """
+
         acao_escolhida = random.choice(self.accoes)
         return acao_escolhida
