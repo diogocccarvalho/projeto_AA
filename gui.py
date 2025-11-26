@@ -27,7 +27,7 @@ class GUI:
         """Método auxiliar para finalizar o desenho"""
         self.root.update()
         # Pequeno delay para a animação ser visível ao olho humano
-        time.sleep(0.1) 
+        time.sleep(0.001) 
 
 
 class GuiRecolecao(GUI):

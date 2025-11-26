@@ -1,12 +1,12 @@
 from simulador import Simulador
 from ambientes.ambiente_recolecao import AmbienteRecolecao
 from ambientes.ambiente_farol import AmbienteFarol
-from agente import AgenteRandom
+from agentes.agente import AgenteRandom
+from agentes.agenteFarolQ import AgenteFarolQ
 from gui import GuiRecolecao, GuiFarol
 
 def main():
-    # --- ESCOLHA DO PROBLEMA ---
-    # Muda para 'False' para testar o Farol
+    #mudar a gui para os 2 cenários
     MODO_RECOLECAO = False
 
     sim = Simulador()
@@ -26,17 +26,14 @@ def main():
         gui = GuiFarol(amb)
 
         # Agente para Farol (movimento simples)
-        agente = AgenteRandom()
+        agente = AgenteFarolQ()
         # accoes default já são Norte/Sul/Este/Oeste
     
     # 2. Configuração Comum
     sim.cria(amb)
     sim.adicionar_agente(agente)
-    sim._max_passos = 500
+    sim._max_passos = 5000
 
-    # 3. LIGAÇÃO GUI <-> AMBIENTE
-    # O ambiente chama 'self.display()' no simulador.
-    # Nós substituímos essa função pelo método 'desenhar' da nossa GUI.
     amb.display = gui.desenhar
 
     # 4. Executar

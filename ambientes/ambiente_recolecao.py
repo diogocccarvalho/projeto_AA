@@ -1,5 +1,5 @@
 import random
-from ambiente import Ambiente
+from ambientes.ambiente import Ambiente
 
 class AmbienteRecolecao(Ambiente):
     def __init__(self, largura=20, altura=20, num_recursos=10):
