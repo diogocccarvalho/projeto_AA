@@ -1,5 +1,4 @@
 import tkinter as tk
-import time
 
 class GUI:
     def __init__(self, ambiente, titulo="Simulador SMA", tamanho_celula=30):
@@ -8,92 +7,108 @@ class GUI:
         self.largura = ambiente.largura
         self.altura = ambiente.altura
         
-        # Configuração da Janela
         self.root = tk.Tk()
         self.root.title(titulo)
         self.canvas = tk.Canvas(
             self.root, 
             width=self.largura * self.tc, 
             height=self.altura * self.tc, 
-            bg="white"
+            bg="#F0F0F0"
         )
         self.canvas.pack()
+        self._desenhar_grid()
+
+    def _desenhar_grid(self):
+        for i in range(self.largura + 1):
+            x = i * self.tc
+            self.canvas.create_line(x, 0, x, self.altura * self.tc, fill="#D0D0D0")
+        for i in range(self.altura + 1):
+            y = i * self.tc
+            self.canvas.create_line(0, y, self.largura * self.tc, y, fill="#D0D0D0")
+
+    def _limpar_dinamicos(self):
+        self.canvas.delete('dinamico')
+
+    def _atualizar_tela(self):
+        self.root.update_idletasks()
+        self.root.update()
 
     def desenhar(self):
-        """Método abstrato que deve ser implementado pelas subclasses"""
-        raise NotImplementedError("A subclasse deve implementar o método desenhar")
+        self._limpar_dinamicos()
+        self._desenhar_elementos_dinamicos()
+        self._atualizar_tela()
 
-    def _limpar_e_atualizar(self):
-        """Método auxiliar para finalizar o desenho"""
-        self.root.update()
-        # Pequeno delay para a animação ser visível ao olho humano
-        time.sleep(0.001) 
-
+    def _desenhar_elementos_dinamicos(self):
+        raise NotImplementedError
 
 class GuiRecolecao(GUI):
-    def __init__(self, ambiente):
+    def __init__(self, ambiente, simulador=None):
         super().__init__(ambiente, titulo="Ambiente: Recoleção")
+        self.simulador = simulador
+        self.cores_equipas = {1: "cyan", 2: "#FF1493"}
         self.cores = {
-            'Ninho': 'green',
-            'Recurso': 'blue',
-            'Agente': 'red',
-            'AgenteCarga': '#8B0000' # Vermelho escuro
+            'Ninho': '#6B4226', 
+            'Recurso': '#2ECC71', 
+            'Agente': '#3498DB', 
+            'AgenteCarga': '#E67E22'
         }
+        self._desenhar_elementos_estaticos()
 
-    def desenhar(self):
-        self.canvas.delete("all") # Limpar tela
-
-        # 1. Desenhar Ninho
+    def _desenhar_elementos_estaticos(self):
+        tc = self.tc
         nx, ny = self.amb.pos_ninho
-        x, y = nx * self.tc, ny * self.tc
-        self.canvas.create_rectangle(x, y, x+self.tc, y+self.tc, fill=self.cores['Ninho'], outline="")
-        self.canvas.create_text(x+15, y+15, text="N", fill="white")
+        self.canvas.create_rectangle(nx*tc, ny*tc, (nx+1)*tc, (ny+1)*tc, fill=self.cores['Ninho'], outline="", tags='estatico')
+        self.canvas.create_text(nx*tc + tc/2, ny*tc + tc/2, text="N", fill="white", font=("Arial", int(tc/2), "bold"), tags='estatico')
 
-        # 2. Desenhar Recursos
+    def _desenhar_elementos_dinamicos(self):
+        tc = self.tc
+        # desenhar recursos
         for (rx, ry) in self.amb.recursos:
-            x, y = rx * self.tc, ry * self.tc
-            self.canvas.create_oval(x+5, y+5, x+self.tc-5, y+self.tc-5, fill=self.cores['Recurso'], outline="")
+            self.canvas.create_oval(rx*tc+tc*0.2, ry*tc+tc*0.2, (rx+1)*tc-tc*0.2, (ry+1)*tc-tc*0.2, fill=self.cores['Recurso'], outline="", tags='dinamico')
 
-        # 3. Desenhar Agentes
+        # desenhar agentes
         for agente, pos in self.amb._posicoes_agentes.items():
             ax, ay = pos
-            carregado = self.amb.agentes_carga.get(agente, False)
-            cor = self.cores['AgenteCarga'] if carregado else self.cores['Agente']
+            cor_base = self.cores['AgenteCarga'] if self.amb.agentes_carga.get(agente, False) else self.cores['Agente']
             
-            x, y = ax * self.tc, ay * self.tc
-            self.canvas.create_rectangle(x+4, y+4, x+self.tc-4, y+self.tc-4, fill=cor, outline="black")
-
-        self._limpar_e_atualizar()
-
+            if self.simulador and not self.amb.agentes_carga.get(agente, False):
+                equipa = self.simulador._equipas.get(agente)
+                cor = self.cores_equipas.get(equipa, cor_base)
+            else:
+                cor = cor_base
+            
+            self.canvas.create_oval(ax*tc+2, ay*tc+2, (ax+1)*tc-2, (ay+1)*tc-2, fill=cor, outline="black", width=1, tags='dinamico')
 
 class GuiFarol(GUI):
-    def __init__(self, ambiente):
+    def __init__(self, ambiente, simulador=None):
         super().__init__(ambiente, titulo="Ambiente: Farol")
-        self.cores = {
-            'Farol': '#FFD700', # Dourado
-            'Agente': 'purple',
-            'Obstaculo': 'gray'
-        }
+        self.simulador = simulador
+        self.cores_equipas = {1: "cyan", 2: "#FF1493"}
+        self.cores = {'Farol': '#F1C40F', 'FarolBrilho': '#F39C12', 'Agente': '#9B59B6', 'Obstaculo': '#34495E'}
+        self._desenhar_elementos_estaticos()
 
-    def desenhar(self):
-        self.canvas.delete("all")
-
-        # 1. Desenhar Farol
+    def _desenhar_elementos_estaticos(self):
+        tc = self.tc
+        # farol
         fx, fy = self.amb.pos_farol
-        x, y = fx * self.tc, fy * self.tc
-        self.canvas.create_oval(x, y, x+self.tc, y+self.tc, fill=self.cores['Farol'], outline="orange", width=3)
-        self.canvas.create_text(x+15, y+15, text="F", fill="black")
+        self.canvas.create_oval(fx*tc-tc*0.2, fy*tc-tc*0.2, (fx+1)*tc+tc*0.2, (fy+1)*tc+tc*0.2, fill=self.cores['FarolBrilho'], outline="", tags='estatico')
+        self.canvas.create_oval(fx*tc, fy*tc, (fx+1)*tc, (fy+1)*tc, fill=self.cores['Farol'], outline="", tags='estatico')
 
-        # 2. Desenhar Obstáculos (caso existam na lista do ambiente)
-        if hasattr(self.amb, 'obstaculos'):
-            for (ox, oy) in self.amb.obstaculos:
-                x, y = ox * self.tc, oy * self.tc
-                self.canvas.create_rectangle(x, y, x+self.tc, y+self.tc, fill=self.cores['Obstaculo'], outline="")
+        # obstaculos
+        for (ox, oy) in self.amb.obstaculos:
+            self.canvas.create_rectangle(ox*tc, oy*tc, (ox+1)*tc, (oy+1)*tc, fill=self.cores['Obstaculo'], outline="#2C3E50", tags='estatico')
 
-        # 3. Desenhar Agentes
+    def _desenhar_elementos_dinamicos(self):
+        tc = self.tc
+        # agentes
         for agente, pos in self.amb._posicoes_agentes.items():
             ax, ay = pos
-            x, y = ax * self.tc, ay * self.tc
-            self.canvas.create_oval(x+5, y+5, x+self.tc-5, y+self.tc-5, fill=self.cores['Agente'], outline="black")
-
-        self._limpar_e_atualizar()
+            cor_base = self.cores['Agente']
+            
+            if self.simulador:
+                equipa = self.simulador._equipas.get(agente)
+                cor = self.cores_equipas.get(equipa, cor_base)
+            else:
+                cor = cor_base
+                
+            self.canvas.create_oval(ax*tc+4, ay*tc+4, (ax+1)*tc-4, (ay+1)*tc-4, fill=cor, outline="black", width=1.5, tags='dinamico')
