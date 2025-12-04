@@ -7,6 +7,6 @@ class AgenteFarolQ(AgenteQ):
 
     def _formar_estado(self, obs):
         if obs is None:
-            return ((0, 0), (0, 0, 0, 0))
+            return ((0, 0), (0, 0, 0, 0, 0, 0, 0, 0))
             
-        return (obs['distancia'], obs['sensores'])
+        return (obs['distancia_discreta'], obs['sensores'])

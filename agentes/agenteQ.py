@@ -3,7 +3,7 @@ import random
 
 class AgenteQ(Agente):
 
-    def __init__(self, alpha=0.1, gamma=0.9, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
+    def __init__(self, alpha=0.2, gamma=0.9, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.999):
         super().__init__()
 
         #parametros

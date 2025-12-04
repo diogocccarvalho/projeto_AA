@@ -3,14 +3,19 @@ from collections import deque
 from ambientes.ambiente import Ambiente
 
 class AmbienteRecolecao(Ambiente):
-
-    
-    #recompensas
-    RECOMPENSA_DEPOSITO = 50
-    RECOMPENSA_RECOLHA = 10
-    PENALIDADE_ACAO_INVALIDA = -2.0
-    PENALIDADE_COLISAO = -1.0
+    # Recompensas
+    RECOMPENSA_DEPOSITO = 100
+    RECOMPENSA_RECOLHA = 50
+    PENALIDADE_ACAO_INVALIDA = -5.0
     CUSTO_MOVIMENTO = -0.1
+    
+    # Recompensas e penalidades espelhadas do AmbienteFarol
+    PENALIDADE_COLISAO = -1.0
+    PENALIDADE_OBSTACULO = -5.0
+    PENALIDADE_REPETICAO = -2.0
+    PENALIDADE_PARADO = -1.0
+    RECOMPENSA_APROXIMACAO_FATOR = 3.0
+    TAMANHO_HISTORICO = 5
 
     def __init__(self, largura=20, altura=20, num_recursos=10, num_obstaculos=10):
         super().__init__(largura, altura)
@@ -23,6 +28,7 @@ class AmbienteRecolecao(Ambiente):
         
         self.agentes_carga = {}
         self._pos_iniciais_agentes = []
+        self._historico_posicoes = {} # Adicionado
         self.reset()
 
 
@@ -43,7 +49,7 @@ class AmbienteRecolecao(Ambiente):
         return elementos
 
     def _tem_caminho(self, inicio, fim):
-        #por descargo de consciencia, bfs para garantir que existe caminho do agente ao goal
+        if not fim: return True # Se não há alvo, há "caminho"
         if inicio == fim:
             return True
         fronteira = deque([inicio])
@@ -72,7 +78,6 @@ class AmbienteRecolecao(Ambiente):
             self.pos_ninho = self._gerar_pos_aleatoria()
             pos_a_evitar = {self.pos_ninho}
             
-            # Gerar posições para agentes, recursos e obstáculos
             self._pos_iniciais_agentes = list(self._gerar_elementos(num_agentes, pos_a_evitar))
             pos_a_evitar.update(self._pos_iniciais_agentes)
             
@@ -81,58 +86,129 @@ class AmbienteRecolecao(Ambiente):
 
             self.obstaculos = self._gerar_elementos(self.num_obstaculos_inicial, pos_a_evitar)
 
-            #garantir caminho
-            if num_agentes == 0 or all(self._tem_caminho(pos, self.pos_ninho) for pos in self._pos_iniciais_agentes):
+            caminho_ok = True
+            for pos_agente in self._pos_iniciais_agentes:
+                caminho_para_ninho = self._tem_caminho(pos_agente, self.pos_ninho)
+                caminho_para_recurso = any(self._tem_caminho(pos_agente, r) for r in self.recursos)
+                if not (caminho_para_ninho and (caminho_para_recurso or not self.recursos)):
+                    caminho_ok = False
+                    break
+            if caminho_ok:
                 break
         
         for i, agente in enumerate(self._posicoes_agentes.keys()):
             self._posicoes_agentes[agente] = self._pos_iniciais_agentes[i]
+        
+        for hist in self._historico_posicoes.values():
+            hist.clear()
 
     def colocar_agente(self, agente):
         super().colocar_agente(agente)
         self.agentes_carga[agente] = False
+        if agente not in self._historico_posicoes:
+            self._historico_posicoes[agente] = deque(maxlen=self.TAMANHO_HISTORICO)
+
+    def _encontrar_recurso_mais_proximo(self, pos_agente):
+        if not self.recursos:
+            return None
+        
+        recursos_dist = [(r, abs(pos_agente[0] - r[0]) + abs(pos_agente[1] - r[1])) for r in self.recursos]
+        recursos_dist.sort(key=lambda x: x[1])
+        return recursos_dist[0][0]
 
     def observacao_para(self, agente):
-        #todo posicoes de ninho/recursos
         if agente not in self._posicoes_agentes or self._posicoes_agentes[agente] is None:
             return None
+
+        pos_agente = self._posicoes_agentes[agente]
+        ax, ay = pos_agente
+        carregando = self.agentes_carga.get(agente, False)
+
+        if carregando:
+            tx, ty = self.pos_ninho
+        else:
+            pos_recurso_proximo = self._encontrar_recurso_mais_proximo(pos_agente)
+            if pos_recurso_proximo:
+                tx, ty = pos_recurso_proximo
+            else: 
+                tx, ty = ax, ay 
+
+        dx = tx - ax
+        dy = ty - ay
+        dist_discreta_alvo = ((dx > 0) - (dx < 0), (dy > 0) - (dy < 0))
+
+        sensores = []
+        dirs = [(0, -1), (0, 1), (1, 0), (-1, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)]
+        for dx_s, dy_s in dirs:
+            nx, ny = ax + dx_s, ay + dy_s
+            if not (0 <= nx < self.largura and 0 <= ny < self.altura) or (nx, ny) in self.obstaculos:
+                sensores.append(1)
+            else:
+                sensores.append(0)
+
         return {
-            "posicao": self._posicoes_agentes[agente],
-            "carregando": self.agentes_carga.get(agente, False)
+            "direcao_alvo": dist_discreta_alvo,
+            "sensores": tuple(sensores),
+            "carregando": carregando
         }
 
     def agir(self, agente, accao):
         if self.terminou:
             return 0
 
-        pos = self._posicoes_agentes[agente]
+        x, y = self._posicoes_agentes[agente]
         carregando = self.agentes_carga.get(agente, False)
+
+        alvo = self.pos_ninho if carregando else self._encontrar_recurso_mais_proximo((x,y))
+        
+        dist_antes = 0
+        if alvo:
+            dist_antes = abs(x - alvo[0]) + abs(y - alvo[1])
 
         movimentos = {"Norte": (0, -1), "Sul": (0, 1), "Este": (1, 0), "Oeste": (-1, 0)}
         if accao in movimentos:
             dx, dy = movimentos[accao]
-            nx, ny = pos[0] + dx, pos[1] + dy
+            nx, ny = x + dx, y + dy
 
             pos_valida = 0 <= nx < self.largura and 0 <= ny < self.altura
-            if pos_valida and (nx, ny) not in self.obstaculos:
-                self._posicoes_agentes[agente] = (nx, ny)
-                return self.CUSTO_MOVIMENTO
-            else:
+            if not pos_valida:
+                return self.PENALIDADE_COLISAO + self.PENALIDADE_PARADO
+            if (nx, ny) in self.obstaculos:
+                return self.PENALIDADE_OBSTACULO
+            
+            outros_agentes_pos = [p for a, p in self._posicoes_agentes.items() if a != agente]
+            if (nx, ny) in outros_agentes_pos:
                 return self.PENALIDADE_COLISAO
 
+            self._posicoes_agentes[agente] = (nx, ny)
+            
+            recompensa_dist = 0
+            if alvo:
+                dist_depois = abs(nx - alvo[0]) + abs(ny - alvo[1])
+                recompensa_dist = (dist_antes - dist_depois) * self.RECOMPENSA_APROXIMACAO_FATOR
+            
+            recompensa_final = self.CUSTO_MOVIMENTO + recompensa_dist
+
+            if (nx, ny) in self._historico_posicoes.get(agente, []):
+                recompensa_final += self.PENALIDADE_REPETICAO
+            
+            self._historico_posicoes[agente].append((nx, ny))
+            
+            return recompensa_final
+
         elif accao == "Recolher":
-            if pos in self.recursos and not carregando:
-                self.recursos.remove(pos)
+            if (x, y) in self.recursos and not carregando:
+                self.recursos.remove((x,y))
                 self.agentes_carga[agente] = True
                 return self.RECOMPENSA_RECOLHA
             else:
                 return self.PENALIDADE_ACAO_INVALIDA
 
         elif accao == "Depositar":
-            if pos == self.pos_ninho and carregando:
+            if (x, y) == self.pos_ninho and carregando:
                 self.agentes_carga[agente] = False
-                #se não existem mais recurso, reset (no sim)
-                if not self.recursos: self.terminou = True
+                if not self.recursos:
+                    self.terminou = True
                 return self.RECOMPENSA_DEPOSITO
             else:
                 return self.PENALIDADE_ACAO_INVALIDA

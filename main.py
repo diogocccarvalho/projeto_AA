@@ -13,18 +13,18 @@ from agentes.agenteRecolecaoQ import AgenteRecolecaoQ
 def main():
     sim = Simulador()
 
-    CENARIO = "FAROL"
-    MODO = "DEMO" # "TREINO_Q", "TREINO_EVO", "DEMO", "DEMO_EQUIPAS"
+    CENARIO = "RECOLECAO"
+    MODO = "DEMO_EQUIPAS" # "TREINO_Q", "TREINO_EVO", "DEMO", "DEMO_EQUIPAS"
 
     ClasseAgenteEvo = None
     if CENARIO == "FAROL":
-        amb = AmbienteFarol(largura=20, altura=20, num_obstaculos=30)
+        amb = AmbienteFarol(largura=50, altura=50, num_obstaculos=50)
         gui = GuiFarol(amb, simulador=sim)
         ClasseQ = AgenteFarolQ
         # ClasseAgenteEvo = AgenteFarolEvo
         save_file = "agente_farol.pkl"
     else: # RECOLECAO
-        amb = AmbienteRecolecao(largura=20, altura=20)
+        amb = AmbienteRecolecao(largura=20, altura=20, num_obstaculos=5)
         gui = GuiRecolecao(amb, simulador=sim)
         ClasseQ = AgenteRecolecaoQ
         # ClasseAgenteEvo = AgenteRecolecaoEvo
@@ -37,7 +37,27 @@ def main():
         agente = ClasseQ()
         agente.learning_mode = True
         sim.adicionar_agente(agente)
-        sim.treinar_q(num_episodios=10000, guardar_em=save_file)
+        sim.treinar_q(num_episodios=1000, guardar_em=save_file)
+
+        # Depois do treino, correr em modo DEMO
+        print("\n--- MODO DEMONSTRAÇÃO PÓS-TREINO ---")
+        cerebro = None
+        if os.path.exists(save_file):
+            with open(save_file, "rb") as f:
+                cerebro = pickle.load(f)
+        
+        agente_demo = ClasseQ()
+        if cerebro and hasattr(cerebro, 'q_table'):
+            agente_demo.q_table = cerebro.q_table
+        agente_demo.learning_mode = False
+        
+        # Limpar agentes antigos e posições
+        sim._agentes = []
+        sim._ambiente._posicoes_agentes = {}
+        sim.adicionar_agente(agente_demo)
+        
+        sim.executa_episodio(visualizador=gui, delay=0.1)
+        gui.root.mainloop()
 
     elif MODO == "TREINO_EVO":
         if ClasseAgenteEvo:
@@ -52,11 +72,13 @@ def main():
             with open(save_file, "rb") as f:
                 cerebro = pickle.load(f)
         
-        agente = ClasseQ()
-        if cerebro and hasattr(cerebro, 'q_table'):
-            agente.q_table = cerebro.q_table
-        agente.learning_mode = False
-        sim.adicionar_agente(agente)
+        # Adicionar 2 agentes para a demonstração
+        for _ in range(2):
+            agente = ClasseQ()
+            if cerebro and hasattr(cerebro, 'q_table'):
+                agente.q_table = cerebro.q_table
+            agente.learning_mode = False
+            sim.adicionar_agente(agente)
         
         sim.executa_episodio(visualizador=gui, delay=0.1)
         gui.root.mainloop()

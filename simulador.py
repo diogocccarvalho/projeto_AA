@@ -4,6 +4,7 @@ import random
 import copy
 import numpy as np
 import concurrent.futures
+import matplotlib.pyplot as plt
 
 class Simulador:
 
@@ -20,6 +21,7 @@ class Simulador:
     def adicionar_agente(self, agente, equipa_id=None):
         self._agentes.append(agente)
         self._ambiente.colocar_agente(agente)
+        print(f"Agente adicionado. Número total de agentes: {len(self._agentes)}")
         
         # sem equipa é competição individual
         if equipa_id is None:
@@ -60,13 +62,15 @@ class Simulador:
         #ação é sequencial para evitar erros
         for agente, acao in decisoes:
             recompensa = self._ambiente.agir(agente, acao)
+            nova_obs = self._ambiente.observacao_para(agente)
+            agente.observacao(nova_obs)
             agente.avaliar_recompensa(recompensa)
-
+            
     def executa_episodio(self, visualizador=None, delay=0.0, max_passos=1000):
         self._preparar_episodio()
         executando = True
         
-        #concurrência
+        #concorrência
         with concurrent.futures.ThreadPoolExecutor() as executor:
             while executando and self._passo_atual < max_passos:
                 self._passo_atual += 1
@@ -74,6 +78,11 @@ class Simulador:
                 
                 if self._ambiente.terminou:
                     executando = False
+        
+        # Desenhar o estado final para garantir que a GUI mostra a conclusão
+        if visualizador:
+            visualizador.desenhar()
+            time.sleep(1) # Pausar por 1 segundo para ver o resultado final
 
 
     def obter_scores_equipas(self):
@@ -113,6 +122,38 @@ class Simulador:
 
         if guardar_em:
             self.guardar_agente(melhor_agente, guardar_em)
+        
+        # Plotar o histórico de scores
+        medias_scores = [np.mean(historico[i:i+100]) for i in range(0, len(historico), 100)]
+        episodios = [i*100 for i in range(len(medias_scores))]
+
+        fig, ax1 = plt.subplots(figsize=(12, 6))
+
+        # Eixo principal para a média de scores
+        ax1.set_xlabel('Episódio')
+        ax1.set_ylabel('Score Médio', color='tab:blue')
+        ax1.plot(episodios, medias_scores, marker='o', linestyle='-', label='Média de Score', color='tab:blue')
+        ax1.tick_params(axis='y', labelcolor='tab:blue')
+        
+        #adicionar linha com melhor score
+        if historico:
+            melhor_score_geral = max(historico)
+            ax1.axhline(y=melhor_score_geral, color='r', linestyle='--', label=f'Melhor Score: {melhor_score_geral:.2f}')
+
+        # Eixo secundário para a derivada (taxa de aprendizagem)
+        derivada = np.diff(medias_scores) / np.diff(episodios)
+        ax2 = ax1.twinx()  
+        ax2.set_ylabel('Taxa de Aprendizagem', color='tab:green')
+        ax2.plot(episodios[1:], derivada, linestyle='--', marker='x', label='Taxa de Aprendizagem', color='tab:green')
+        ax2.tick_params(axis='y', labelcolor='tab:green')
+
+        fig.tight_layout()  
+        plt.title('Progresso e Taxa de Aprendizagem do Agente')
+        ax1.legend(loc='upper left')
+        ax2.legend(loc='upper right')
+        plt.grid(True)
+        plt.show()
+
         return historico
 
     #evolução
