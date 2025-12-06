@@ -6,13 +6,31 @@ import numpy as np
 import concurrent.futures
 import matplotlib.pyplot as plt
 
+# --- Função auxiliar para multiprocessing (tem de estar fora da classe) ---
+def _avaliar_individuo_wrapper(args):
+    """
+    Função helper para avaliar um indivíduo em paralelo.
+    Recebe um tuplo: (agente, config_ambiente, ClasseAmbiente)
+    """
+    agent, env_config, ClasseAmbiente = args
+    
+    # Criar ambiente e simulador isolados para este processo
+    ambiente = ClasseAmbiente(**env_config)
+    sim = Simulador()
+    sim.cria(ambiente)
+    sim.adicionar_agente(agent, verbose=False)
+    
+    # Executa o episódio
+    sim.executa_episodio(visualizador=None, delay=0, max_passos=1000)
+    
+    return agent.recompensa_total
+
 class Simulador:
 
     def __init__(self):
         self._agentes = []
         self._ambiente = None
         self._passo_atual = 0
-        #equipas
         self._equipas = {} 
 
     def cria(self, ambiente):
@@ -24,7 +42,6 @@ class Simulador:
         if verbose:
             print(f"Agente adicionado. Número total de agentes: {len(self._agentes)}")
         
-        # sem equipa é competição individual
         if equipa_id is None:
             self._equipas[agente] = f"Solo_{id(agente)}"
         else:
@@ -32,12 +49,10 @@ class Simulador:
 
     @staticmethod
     def guardar_agente(agente, filename):
-        #guardar melhor agente
         with open(filename, "wb") as f:
             pickle.dump(agente, f)
         print(f"Agente guardado em: {filename}")
 
-    #processar as decisõe dos agentes em paralelo
     def _processar_decisao_agente(self, agente):
         obs = self._ambiente.observacao_para(agente)
         agente.observacao(obs)
@@ -62,7 +77,9 @@ class Simulador:
         for ag in self._agentes:
             decisoes.append(self._processar_decisao_agente(ag))
 
-        #ação é sequencial para evitar erros
+        # Ordem aleatória para evitar prioridade fixa
+        random.shuffle(decisoes)
+
         for agente, acao in decisoes:
             recompensa = self._ambiente.agir(agente, acao)
             nova_obs = self._ambiente.observacao_para(agente)
@@ -80,15 +97,13 @@ class Simulador:
             if self._ambiente.terminou:
                 executando = False
         
-        # Desenhar o estado final para garantir que a GUI mostra a conclusão
         if visualizador:
             visualizador.desenhar()
-            visualizador.root.after(1000, visualizador.on_close) # Pausar por 1 segundo para ver o resultado final
-
-
+            # Pequena pausa apenas se estivermos em modo GUI interativo, não em treino
+            if delay > 0:
+                visualizador.root.update()
 
     def obter_scores_equipas(self):
-        #pontuações
         scores = {}
         for agente in self._agentes:
             equipa = self._equipas.get(agente)
@@ -99,27 +114,26 @@ class Simulador:
 
     @staticmethod
     def treinar_q(ClasseAmbiente, ClasseAgente, env_params, num_agentes, num_episodios=1000, guardar_em=None):
-        print(f"--- Treino Q-Learning: {num_episodios} episódios ---")
+        print(f"--- Treino Q-Learning Competitivo: {num_episodios} episódios ---")
 
         agentes = [ClasseAgente() for _ in range(num_agentes)]
         for ag in agentes:
             ag.learning_mode = True
         
-        print(f"{num_agentes} agentes criados para o treino.")
+        print(f"{num_agentes} agentes criados. A métrica será o score do VENCEDOR (Max Score).")
 
-        historico_media_scores = []
-        melhor_media = -float('inf')
+        historico_max_scores = []  # MUDANÇA: Guardar o máximo em vez da média
+        melhor_media_vencedores = -float('inf')
         melhor_agente = None
 
-        # Criar o simulador e o ambiente uma vez
         sim = Simulador()
-        ambiente = ClasseAmbiente(largura=1, altura=1) # Tamanho inicial, será reconfigurado
+        ambiente = ClasseAmbiente(largura=20, altura=20)
         sim.cria(ambiente)
         for ag in agentes:
             sim.adicionar_agente(ag, verbose=False)
 
         for i in range(num_episodios):
-            # Randomizar e reconfigurar o ambiente existente
+            # Reconfiguração do ambiente
             largura = random.randint(*env_params['largura'])
             altura = random.randint(*env_params['altura'])
             
@@ -131,9 +145,8 @@ class Simulador:
                 min_rec, max_rec = env_params['num_recursos']
                 env_kwargs['num_recursos'] = random.randint(min_rec, max_rec)
             
-            sim.ambiente.reconfigurar(**env_kwargs)
+            sim._ambiente.reconfigurar(**env_kwargs)
 
-            # Resetar estado dos agentes para o novo episódio
             for ag in sim._agentes:
                 ag.recompensa_total = 0
                 if hasattr(ag, 'reset_episodio'):
@@ -142,24 +155,21 @@ class Simulador:
             sim.executa_episodio(visualizador=None, delay=0)
             
             scores = [ag.recompensa_total for ag in sim._agentes]
-            score_medio = np.mean(scores) if scores else 0
-            historico_media_scores.append(score_medio)
+            
+            # MUDANÇA CRÍTICA: Usamos o MAX (quem ganhou) para avaliar o episódio
+            score_vencedor = max(scores) if scores else 0
+            historico_max_scores.append(score_vencedor)
 
             if (i+1) % 100 == 0:
-                media_recente = np.mean(historico_media_scores[-100:])
-                print(f"Episódio {i+1}: Média Score (últimos 100) = {media_recente:.2f}")
-                if media_recente > melhor_media:
-                    melhor_media = media_recente
-                    if scores:
-                        # Encontrar e salvar o agente com o melhor score da última centena de episódios
-                        best_score_episode = -float('inf')
-                        best_agent_episode = None
-                        for ag in sim._agentes:
-                            if ag.recompensa_total > best_score_episode:
-                                best_score_episode = ag.recompensa_total
-                                best_agent_episode = ag
-                        if best_agent_episode:
-                            melhor_agente = copy.deepcopy(best_agent_episode)
+                # Avalia a performance baseada na consistência dos vencedores
+                media_recente = np.mean(historico_max_scores[-100:])
+                print(f"Episódio {i+1}: Média do Vencedor (últimos 100) = {media_recente:.2f}")
+                
+                if media_recente > melhor_media_vencedores:
+                    melhor_media_vencedores = media_recente
+                    # Encontrar e guardar o agente que venceu este episódio específico
+                    best_agent_now = max(sim._agentes, key=lambda a: a.recompensa_total)
+                    melhor_agente = copy.deepcopy(best_agent_now)
 
         if melhor_agente is None and agentes:
             melhor_agente = agentes[0]
@@ -167,229 +177,140 @@ class Simulador:
         if guardar_em and melhor_agente:
             Simulador.guardar_agente(melhor_agente, guardar_em)
         
-        # Plotar o histórico de scores
-        medias_scores_plot = [np.mean(historico_media_scores[i:i+100]) for i in range(0, len(historico_media_scores), 100)]
-        episodios = [i*100 for i in range(len(medias_scores_plot))]
+        # Plotar usando a nova métrica
+        Simulador._plotar_progresso(historico_max_scores, guardar_em, "Q-Learning (Score do Vencedor)")
+        return historico_max_scores
 
-        fig, ax1 = plt.subplots(figsize=(12, 6))
+    @staticmethod
+    def treinar_genetico(ClasseAmbiente, ClasseAgente, env_params, pop_size, num_geracoes=50, guardar_em=None):
+        print(f"--- Treino Genético: {num_geracoes} gerações, População de {pop_size} ---")
 
-        ax1.set_xlabel('Episódio')
-        ax1.set_ylabel('Score Médio', color='tab:blue')
-        ax1.plot(episodios, medias_scores_plot, marker='o', linestyle='-', label='Média de Score', color='tab:blue')
-        ax1.tick_params(axis='y', labelcolor='tab:blue')
+        populacao = [ClasseAgente() for _ in range(pop_size)]
+        melhor_global = None
+        best_score_global = -float('inf')
+
+        historico_melhor_score = []
+        historico_media_score = []
+
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            for g in range(num_geracoes):
+                # Preparar configurações para avaliação em paralelo
+                args_list = []
+                for ind in populacao:
+                    largura = random.randint(*env_params['largura'])
+                    altura = random.randint(*env_params['altura'])
+                    env_kwargs = {'largura': largura, 'altura': altura}
+                    
+                    if 'num_obstaculos' in env_params:
+                        min_obs, max_obs = env_params['num_obstaculos']
+                        env_kwargs['num_obstaculos'] = random.randint(min_obs, max_obs)
+                    if 'num_recursos' in env_params:
+                        min_rec, max_rec = env_params['num_recursos']
+                        env_kwargs['num_recursos'] = random.randint(min_rec, max_rec)
+                    
+                    # Passamos também a ClasseAmbiente para o worker poder instanciar
+                    args_list.append((ind, env_kwargs, ClasseAmbiente))
+
+                # Avaliar população em paralelo
+                scores = list(executor.map(_avaliar_individuo_wrapper, args_list))
+
+                max_s = max(scores) if scores else -float('inf')
+                avg_s = np.mean(scores) if scores else -float('inf')
+                
+                historico_melhor_score.append(max_s)
+                historico_media_score.append(avg_s)
+
+                print(f"Geração {g+1}: Melhor Score={max_s:.1f}, Média Score={avg_s:.1f}")
+                
+                if max_s > best_score_global:
+                    best_score_global = max_s
+                    if scores:
+                        idx_best = scores.index(max_s)
+                        melhor_global = copy.deepcopy(populacao[idx_best])
+
+                # Reprodução (Nova geração)
+                populacao = Simulador._reproduzir_populacao(populacao, scores, pop_size)
+
+        if guardar_em and melhor_global:
+            Simulador.guardar_agente(melhor_global, guardar_em)
         
-        if historico_media_scores:
-            melhor_score_geral = max(historico_media_scores)
-            ax1.axhline(y=melhor_score_geral, color='r', linestyle='--', label=f'Melhor Score Médio: {melhor_score_geral:.2f}')
+        # Plot adaptado para genético
+        Simulador._plotar_progresso(historico_melhor_score, guardar_em, "Genético (Melhor Score)", extra_data=historico_media_score)
 
-        if len(episodios) > 1:
-            derivada = np.diff(medias_scores_plot) / np.diff(episodios)
-            ax2 = ax1.twinx()  
-            ax2.set_ylabel('Taxa de Aprendizagem', color='tab:green')
-            ax2.plot(episodios[1:], derivada, linestyle='--', marker='x', label='Taxa de Aprendizagem', color='tab:green')
-            ax2.tick_params(axis='y', labelcolor='tab:green')
-            ax2.legend(loc='upper right')
+        return best_score_global
 
-        fig.tight_layout()  
-        plt.title('Progresso e Taxa de Aprendizagem do Agente Q-Learning')
-        ax1.legend(loc='upper left')
+    @staticmethod
+    def _reproduzir_populacao(populacao, scores, pop_size, elite_pct=0.1, mutation_rate=0.05):
+        """
+        Gera uma nova população baseada nos scores atuais.
+        Inclui Elitismo, Torneio e Mutação.
+        """
+        nova_populacao = []
+        
+        # 1. Elitismo: Manter os melhores X%
+        num_elites = max(1, int(pop_size * elite_pct))
+        indices_ordenados = np.argsort(scores)[::-1] # Decrescente
+        
+        for i in range(num_elites):
+            idx = indices_ordenados[i]
+            nova_populacao.append(copy.deepcopy(populacao[idx]))
+            
+        # 2. Preencher o resto da população
+        while len(nova_populacao) < pop_size:
+            # Seleção por Torneio
+            pai1 = Simulador._torneio(populacao, scores)
+            pai2 = Simulador._torneio(populacao, scores)
+            
+            # Crossover (Média dos pesos)
+            filho = copy.deepcopy(pai1)
+            genes_p1 = pai1.genes
+            genes_p2 = pai2.genes
+            
+            # Cruzamento simples: média dos pesos
+            genes_filho = (genes_p1 + genes_p2) / 2.0
+            
+            # Mutação (Adicionar ruído aleatório)
+            if random.random() < 0.8: # Chance de sofrer mutação
+                noise = np.random.randn(len(genes_filho)) * mutation_rate
+                # Máscara para afetar apenas alguns genes ou todos? Aqui afeta todos um pouco (Gaussian)
+                genes_filho += noise
+            
+            filho.genes = genes_filho
+            nova_populacao.append(filho)
+            
+        return nova_populacao
+
+    @staticmethod
+    def _torneio(populacao, scores, k=3):
+        indices = np.random.choice(len(populacao), k)
+        best_idx = indices[0]
+        best_score = scores[best_idx]
+        
+        for idx in indices[1:]:
+            if scores[idx] > best_score:
+                best_score = scores[idx]
+                best_idx = idx
+        return populacao[best_idx]
+
+    @staticmethod
+    def _plotar_progresso(dados_principal, filename, titulo, extra_data=None):
+        if not dados_principal: return
+        
+        fig, ax1 = plt.subplots(figsize=(10, 6))
+        episodios = range(len(dados_principal))
+        
+        ax1.plot(episodios, dados_principal, label='Principal (Média/Melhor)', color='b')
+        if extra_data:
+            ax1.plot(episodios, extra_data, label='Média', color='c', linestyle='--')
+            
+        ax1.set_xlabel('Iteração')
+        ax1.set_ylabel('Score')
+        plt.title(f'Progresso de Treino: {titulo}')
+        plt.legend()
         plt.grid(True)
         
-        if guardar_em:
-            graph_filename = guardar_em.replace('.pkl', '_q_learning_progress.png')
-            plt.savefig(graph_filename)
-            print(f"Gráfico de progresso guardado em: {graph_filename}")
-        
+        if filename:
+            nome_grafico = filename.replace('.pkl', '_progress.png')
+            plt.savefig(nome_grafico)
+            print(f"Gráfico guardado: {nome_grafico}")
         plt.close(fig)
-
-        return historico_media_scores
-
-        @staticmethod
-
-        def treinar_genetico(ClasseAmbiente, ClasseAgente, env_params, pop_size, num_geracoes=50, guardar_em=None):
-
-            print(f"--- Treino Genético: {num_geracoes} gerações, População de {pop_size} ---")
-
-            
-
-            populacao = [ClasseAgente() for _ in range(pop_size)]
-
-            melhor_global = None
-
-            best_score_global = -float('inf')
-
-    
-
-            historico_melhor_score = []
-
-            historico_media_score = []
-
-    
-
-            def _avaliar_individuo(args):
-
-                agent, env_config = args
-
-                
-
-                # Criar ambiente e simulador uma vez por processo
-
-                ambiente = ClasseAmbiente(**env_config)
-
-                sim = Simulador()
-
-                sim.cria(ambiente)
-
-                sim.adicionar_agente(agent, verbose=False)
-
-                sim.executa_episodio(max_passos=1000)
-
-                return agent.recompensa_total
-
-    
-
-            with concurrent.futures.ProcessPoolExecutor() as executor:
-
-                for g in range(num_geracoes):
-
-                    # Gerar configurações de ambiente para cada indivíduo
-
-                    env_configs = []
-
-                    for _ in range(pop_size):
-
-                        largura = random.randint(*env_params['largura'])
-
-                        altura = random.randint(*env_params['altura'])
-
-                        
-
-                        env_kwargs = {'largura': largura, 'altura': altura}
-
-                        if 'num_obstaculos' in env_params:
-
-                            min_obs, max_obs = env_params['num_obstaculos']
-
-                            env_kwargs['num_obstaculos'] = random.randint(min_obs, max_obs)
-
-                        if 'num_recursos' in env_params:
-
-                            min_rec, max_rec = env_params['num_recursos']
-
-                            env_kwargs['num_recursos'] = random.randint(min_rec, max_rec)
-
-                        env_configs.append(env_kwargs)
-
-    
-
-                    # Mapear a avaliação para a pool de processos
-
-                    args_list = zip(populacao, env_configs)
-
-                    scores = list(executor.map(_avaliar_individuo, args_list))
-
-    
-
-                    max_s = max(scores) if scores else -float('inf')
-
-                    avg_s = np.mean(scores) if scores else -float('inf')
-
-                    
-
-                    historico_melhor_score.append(max_s)
-
-                    historico_media_score.append(avg_s)
-
-    
-
-                    print(f"Geração {g+1}: Melhor Score={max_s:.1f}, Média Score={avg_s:.1f}")
-
-                    
-
-                    if max_s > best_score_global:
-
-                        best_score_global = max_s
-
-                        if scores:
-
-                            idx_best = scores.index(max_s)
-
-                            melhor_global = copy.deepcopy(populacao[idx_best])
-
-    
-
-                    populacao = Simulador._reproduzir_populacao(populacao, scores, pop_size)
-
-    
-
-            if guardar_em and melhor_global:
-
-                Simulador.guardar_agente(melhor_global, guardar_em)
-
-            
-
-            # Plotting
-
-            fig, ax1 = plt.subplots(figsize=(12, 6))
-
-            
-
-            geracoes = range(1, num_geracoes + 1)
-
-            ax1.plot(geracoes, historico_melhor_score, marker='o', linestyle='-', label='Melhor Score por Geração', color='tab:blue')
-
-            ax1.plot(geracoes, historico_media_score, marker='x', linestyle='--', label='Média de Score por Geração', color='tab:cyan')
-
-            ax1.set_xlabel('Geração')
-
-            ax1.set_ylabel('Score', color='tab:blue')
-
-            ax1.tick_params(axis='y', labelcolor='tab:blue')
-
-            ax1.legend(loc='upper left')
-
-            
-
-            # Adicionar derivada da média
-
-            if num_geracoes > 1:
-
-                derivada = np.diff(historico_media_score)
-
-                ax2 = ax1.twinx()
-
-                ax2.plot(geracoes[1:], derivada, linestyle=':', marker='.', label='Taxa de Aprendizagem (Derivada da Média)', color='tab:green')
-
-                ax2.set_ylabel('Taxa de Aprendizagem', color='tab:green')
-
-                ax2.tick_params(axis='y', labelcolor='tab:green')
-
-                ax2.legend(loc='upper right')
-
-    
-
-            plt.title('Progresso do Algoritmo Genético')
-
-            plt.grid(True)
-
-            fig.tight_layout()
-
-            
-
-            if guardar_em:
-
-                graph_filename = guardar_em.replace('.pkl', '_genetico_progress.png')
-
-                plt.savefig(graph_filename)
-
-                print(f"Gráfico de progresso guardado em: {graph_filename}")
-
-                
-
-            plt.close(fig)
-
-    
-
-            return best_score_global
-
-    

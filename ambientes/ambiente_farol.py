@@ -11,7 +11,7 @@ class AmbienteFarol(Ambiente):
     PENALIDADE_REPETICAO = -2.5  # Penalidade por visitar posições recentes
     PENALIDADE_PARADO = -1.0     # Penalidade adicional por colidir e ficar parado
     TAMANHO_HISTORICO = 5       # Número de passos a lembrar
-    RECOMPENSA_APROXIMACAO_FATOR = 5 # Fator de multiplicação para a recompensa de aproximação
+    RECOMPENSA_APROXIMACAO_FATOR = 1 # Fator de multiplicação para a recompensa de aproximação
     PENALIDADE_TEMPO_FATOR = 0.01    # Fator de penalidade por passo
     MIN_DIST_INICIAL = 5       # Distância mínima inicial entre agente e farol
 

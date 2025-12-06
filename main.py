@@ -48,7 +48,7 @@ def run_lighthouse_demo():
     # Adicionar 2 agentes de cada tipo
     for i in range(2):
         agente_q = ClasseQ()
-        if cerebro_q: agente_q.q_table = cerebro_q.q_table
+        if cerebro_q: agente_q.q_table = cerebro_q.q_table.copy()
         agente_q.learning_mode = False
         sim.adicionar_agente(agente_q, verbose=False, equipa_id=f"Q_{i}")
 
@@ -152,7 +152,7 @@ def main():
     parser.add_argument(
         "--modo", 
         type=str, 
-        default="TREINO_Q", 
+        default="TREINO_Q_EVO_ALL", 
         choices=["TREINO_Q", "TREINO_EVO", "DEMO_Q", "DEMO_EVO", "DEMO_TEAMS", "DEMO_GIGANTE", "TREINO_Q_EVO_ALL"],
         help="Modo de execução do simulador."
     )
@@ -239,7 +239,7 @@ def main():
             ClasseAgente=AgenteFarolQ,
             env_params=env_params_farol,
             num_agentes=2,
-            num_episodios=5000, 
+            num_episodios=10000, 
             guardar_em="agente_farol_q.pkl"
         )
 
@@ -249,8 +249,8 @@ def main():
             ClasseAmbiente=AmbienteFarol,
             ClasseAgente=AgenteFarolEvo, 
             env_params=env_params_farol,
-            pop_size=20,
-            num_geracoes=100, 
+            pop_size=50,
+            num_geracoes=1000, 
             guardar_em="agente_farol_evo.pkl"
         )
 
@@ -262,7 +262,7 @@ def main():
             ClasseAgente=AgenteRecolecaoQ,
             env_params=env_params_recolha,
             num_agentes=2,
-            num_episodios=5000, 
+            num_episodios=10000, 
             guardar_em="agente_recolecao_q.pkl"
         )
 
@@ -272,8 +272,8 @@ def main():
             ClasseAmbiente=AmbienteRecolecao,
             ClasseAgente=AgenteRecolecaoEvo, 
             env_params=env_params_recolha,
-            pop_size=20,
-            num_geracoes=100, 
+            pop_size=50,
+            num_geracoes=1000, 
             guardar_em="agente_recolecao_evo.pkl"
         )
 
