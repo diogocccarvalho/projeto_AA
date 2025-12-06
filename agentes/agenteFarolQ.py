@@ -7,6 +7,8 @@ class AgenteFarolQ(AgenteQ):
 
     def _formar_estado(self, obs):
         if obs is None:
-            return ((0, 0), (0, 0, 0, 0, 0, 0, 0, 0))
+            return ((0, 0), tuple())
             
-        return (obs['distancia_discreta'], obs['sensores'])
+        # Converter o dicionário de sensores para uma tuple de items para ser hasheable
+        sensores_tuple = tuple(sorted(obs['sensores'].items()))
+        return (obs['distancia_discreta'], sensores_tuple)

@@ -6,17 +6,42 @@ class GUI:
         self.tc = tamanho_celula
         self.largura = ambiente.largura
         self.altura = ambiente.altura
+        self.is_destroyed = False
         
         self.root = tk.Tk()
         self.root.title(titulo)
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+        # Limitar o tamanho da janela e adicionar scrollbars
+        max_w = self.root.winfo_screenwidth() - 100
+        max_h = self.root.winfo_screenheight() - 150
+        canvas_w = self.largura * self.tc
+        canvas_h = self.altura * self.tc
+
+        frame = tk.Frame(self.root)
+        frame.pack(fill=tk.BOTH, expand=True)
+
         self.canvas = tk.Canvas(
-            self.root, 
-            width=self.largura * self.tc, 
-            height=self.altura * self.tc, 
-            bg="#F0F0F0"
+            frame,
+            width=min(canvas_w, max_w),
+            height=min(canvas_h, max_h),
+            bg="#F0F0F0",
+            scrollregion=(0, 0, canvas_w, canvas_h)
         )
-        self.canvas.pack()
+
+        hbar = tk.Scrollbar(frame, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        vbar = tk.Scrollbar(frame, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.canvas.config(xscrollcommand=hbar.set, yscrollcommand=vbar.set)
+
+        vbar.pack(side=tk.RIGHT, fill=tk.Y)
+        hbar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
         self._desenhar_grid()
+
+    def on_close(self):
+        self.is_destroyed = True
+        self.root.destroy()
 
     def _desenhar_grid(self):
         for i in range(self.largura + 1):
@@ -27,13 +52,16 @@ class GUI:
             self.canvas.create_line(0, y, self.largura * self.tc, y, fill="#D0D0D0")
 
     def _limpar_dinamicos(self):
+        if self.is_destroyed: return
         self.canvas.delete('dinamico')
 
     def _atualizar_tela(self):
+        if self.is_destroyed: return
         self.root.update_idletasks()
         self.root.update()
 
     def desenhar(self):
+        if self.is_destroyed: return
         self._limpar_dinamicos()
         self._desenhar_elementos_dinamicos()
         self._atualizar_tela()

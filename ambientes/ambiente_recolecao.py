@@ -4,23 +4,25 @@ from ambientes.ambiente import Ambiente
 
 class AmbienteRecolecao(Ambiente):
     # Recompensas
-    RECOMPENSA_DEPOSITO = 100
-    RECOMPENSA_RECOLHA = 50
-    PENALIDADE_ACAO_INVALIDA = -5.0
+    RECOMPENSA_DEPOSITO = 200
+    RECOMPENSA_RECOLHA = 100
+    PENALIDADE_ACAO_INVALIDA = -10.0
     CUSTO_MOVIMENTO = -0.1
     
     # Recompensas e penalidades espelhadas do AmbienteFarol
     PENALIDADE_COLISAO = -1.0
     PENALIDADE_OBSTACULO = -5.0
-    PENALIDADE_REPETICAO = -2.0
+    PENALIDADE_REPETICAO = -2.5
     PENALIDADE_PARADO = -1.0
-    RECOMPENSA_APROXIMACAO_FATOR = 3.0
+    RECOMPENSA_APROXIMACAO_FATOR = 5.0
     TAMANHO_HISTORICO = 5
+    PENALIDADE_TEMPO_SEM_DEPOSITO = -0.05
 
     def __init__(self, largura=20, altura=20, num_recursos=10, num_obstaculos=10):
         super().__init__(largura, altura)
         self.num_recursos_inicial = num_recursos
         self.num_obstaculos_inicial = num_obstaculos
+        self.passos_sem_deposito = 0
         
         self.pos_ninho = None
         self.recursos = set()
@@ -29,6 +31,13 @@ class AmbienteRecolecao(Ambiente):
         self.agentes_carga = {}
         self._pos_iniciais_agentes = []
         self._historico_posicoes = {} # Adicionado
+        self.reset()
+
+    def reconfigurar(self, **kwargs):
+        self.largura = kwargs.get('largura', self.largura)
+        self.altura = kwargs.get('altura', self.altura)
+        self.num_recursos_inicial = kwargs.get('num_recursos', self.num_recursos_inicial)
+        self.num_obstaculos_inicial = kwargs.get('num_obstaculos', self.num_obstaculos_inicial)
         self.reset()
 
 
@@ -70,6 +79,9 @@ class AmbienteRecolecao(Ambiente):
 
     def reset(self):
         self.terminou = False
+        self.passos_sem_deposito = 0
+        for agente in self._posicoes_agentes:
+            self._passos_parado[agente] = 0
         num_agentes = len(self._posicoes_agentes)
         for agente in self._posicoes_agentes:
             self.agentes_carga[agente] = False
@@ -81,10 +93,12 @@ class AmbienteRecolecao(Ambiente):
             self._pos_iniciais_agentes = list(self._gerar_elementos(num_agentes, pos_a_evitar))
             pos_a_evitar.update(self._pos_iniciais_agentes)
             
-            self.recursos = self._gerar_elementos(self.num_recursos_inicial, pos_a_evitar)
+            num_recursos = random.randint(self.num_recursos_inicial // 2, int(self.num_recursos_inicial * 1.5))
+            self.recursos = self._gerar_elementos(num_recursos, pos_a_evitar)
             pos_a_evitar.update(self.recursos)
 
-            self.obstaculos = self._gerar_elementos(self.num_obstaculos_inicial, pos_a_evitar)
+            num_obstaculos = random.randint(self.num_obstaculos_inicial // 2, int(self.num_obstaculos_inicial * 1.5))
+            self.obstaculos = self._gerar_elementos(num_obstaculos, pos_a_evitar)
 
             caminho_ok = True
             for pos_agente in self._pos_iniciais_agentes:
@@ -135,20 +149,29 @@ class AmbienteRecolecao(Ambiente):
 
         dx = tx - ax
         dy = ty - ay
-        dist_discreta_alvo = ((dx > 0) - (dx < 0), (dy > 0) - (dy < 0))
+        direcao_alvo = ((dx > 0) - (dx < 0), (dy > 0) - (dy < 0))
 
-        sensores = []
-        dirs = [(0, -1), (0, 1), (1, 0), (-1, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)]
-        for dx_s, dy_s in dirs:
+        distancia = abs(dx) + abs(dy)
+        if distancia < 5:
+            distancia_discreta = 0
+        elif distancia < 15:
+            distancia_discreta = 1
+        else:
+            distancia_discreta = 2
+
+        sensores = {}
+        dirs = {"Norte": (0, -1), "Sul": (0, 1), "Este": (1, 0), "Oeste": (-1, 0), "Noroeste": (-1, -1), "Sudoeste": (-1, 1), "Nordeste": (1, -1), "Sudeste": (1, 1)}
+        for nome_dir, (dx_s, dy_s) in dirs.items():
             nx, ny = ax + dx_s, ay + dy_s
             if not (0 <= nx < self.largura and 0 <= ny < self.altura) or (nx, ny) in self.obstaculos:
-                sensores.append(1)
+                sensores[nome_dir] = 1
             else:
-                sensores.append(0)
+                sensores[nome_dir] = 0
 
         return {
-            "direcao_alvo": dist_discreta_alvo,
-            "sensores": tuple(sensores),
+            "direcao_alvo": direcao_alvo,
+            "distancia_discreta": distancia_discreta,
+            "sensores": sensores,
             "carregando": carregando
         }
 
@@ -156,32 +179,32 @@ class AmbienteRecolecao(Ambiente):
         if self.terminou:
             return 0
 
+        self.passos_sem_deposito += 1
         x, y = self._posicoes_agentes[agente]
         carregando = self.agentes_carga.get(agente, False)
 
-        alvo = self.pos_ninho if carregando else self._encontrar_recurso_mais_proximo((x,y))
-        
+        alvo = self.pos_ninho if carregando else self._encontrar_recurso_mais_proximo((x, y))
+
         dist_antes = 0
         if alvo:
             dist_antes = abs(x - alvo[0]) + abs(y - alvo[1])
+        else:
+            # Se não há alvo, o agente não deve ser penalizado ou recompensado pela distância
+            dist_antes = 0
 
         movimentos = {"Norte": (0, -1), "Sul": (0, 1), "Este": (1, 0), "Oeste": (-1, 0)}
         if accao in movimentos:
             dx, dy = movimentos[accao]
             nx, ny = x + dx, y + dy
 
-            pos_valida = 0 <= nx < self.largura and 0 <= ny < self.altura
-            if not pos_valida:
-                return self.PENALIDADE_COLISAO + self.PENALIDADE_PARADO
-            if (nx, ny) in self.obstaculos:
-                return self.PENALIDADE_OBSTACULO
-            
-            outros_agentes_pos = [p for a, p in self._posicoes_agentes.items() if a != agente]
-            if (nx, ny) in outros_agentes_pos:
-                return self.PENALIDADE_COLISAO
+            sucesso, recompensa_colisao = self._mover_agente(agente, (nx, ny))
 
-            self._posicoes_agentes[agente] = (nx, ny)
+            if not sucesso:
+                return recompensa_colisao
             
+            # Posição atualizada
+            nx, ny = self._posicoes_agentes[agente]
+
             recompensa_dist = 0
             if alvo:
                 dist_depois = abs(nx - alvo[0]) + abs(ny - alvo[1])
@@ -194,23 +217,30 @@ class AmbienteRecolecao(Ambiente):
             
             self._historico_posicoes[agente].append((nx, ny))
             
-            return recompensa_final
+            return recompensa_final + (self.passos_sem_deposito * self.PENALIDADE_TEMPO_SEM_DEPOSITO)
 
-        elif accao == "Recolher":
-            if (x, y) in self.recursos and not carregando:
-                self.recursos.remove((x,y))
-                self.agentes_carga[agente] = True
-                return self.RECOMPENSA_RECOLHA
-            else:
-                return self.PENALIDADE_ACAO_INVALIDA
+        else: # Ações "Recolher" ou "Depositar"
+            self._passos_parado[agente] += 1
+            penalidade_parado = self._passos_parado[agente] * self.PENALIDADE_PARADO_CRESCENTE
 
-        elif accao == "Depositar":
-            if (x, y) == self.pos_ninho and carregando:
-                self.agentes_carga[agente] = False
-                if not self.recursos:
-                    self.terminou = True
-                return self.RECOMPENSA_DEPOSITO
-            else:
-                return self.PENALIDADE_ACAO_INVALIDA
+            if accao == "Recolher":
+                if (x, y) in self.recursos and not carregando:
+                    self.recursos.remove((x,y))
+                    self.agentes_carga[agente] = True
+                    self._passos_parado[agente] = 0
+                    return self.RECOMPENSA_RECOLHA
+                else:
+                    return self.PENALIDADE_ACAO_INVALIDA + penalidade_parado
+
+            elif accao == "Depositar":
+                if (x, y) == self.pos_ninho and carregando:
+                    self.agentes_carga[agente] = False
+                    self.passos_sem_deposito = 0
+                    if not self.recursos:
+                        self.terminou = True
+                    self._passos_parado[agente] = 0
+                    return self.RECOMPENSA_DEPOSITO
+                else:
+                    return self.PENALIDADE_ACAO_INVALIDA + penalidade_parado
         
         return 0

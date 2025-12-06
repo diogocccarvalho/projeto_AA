@@ -8,7 +8,7 @@ class AmbienteFarol(Ambiente):
     PENALIDADE_COLISAO = -1.0
     PENALIDADE_OBSTACULO = -5.0
     CUSTO_MOVIMENTO = -0.01
-    PENALIDADE_REPETICAO = -5.0  # Penalidade por visitar posições recentes
+    PENALIDADE_REPETICAO = -2.5  # Penalidade por visitar posições recentes
     PENALIDADE_PARADO = -1.0     # Penalidade adicional por colidir e ficar parado
     TAMANHO_HISTORICO = 5       # Número de passos a lembrar
     RECOMPENSA_APROXIMACAO_FATOR = 5 # Fator de multiplicação para a recompensa de aproximação
@@ -23,6 +23,12 @@ class AmbienteFarol(Ambiente):
         self._pos_iniciais_agentes = []
         self._historico_posicoes = {}
         self.passos_no_episodio = 0
+        self.reset()
+
+    def reconfigurar(self, **kwargs):
+        self.largura = kwargs.get('largura', self.largura)
+        self.altura = kwargs.get('altura', self.altura)
+        self.num_obstaculos_inicial = kwargs.get('num_obstaculos', self.num_obstaculos_inicial)
         self.reset()
 
 
@@ -74,6 +80,8 @@ class AmbienteFarol(Ambiente):
 
         self.terminou = False
         self.passos_no_episodio = 0
+        for agente in self._posicoes_agentes:
+            self._passos_parado[agente] = 0
         num_agentes = len(self._posicoes_agentes)
 
         #loop para ver se o mapa é válido
@@ -95,7 +103,8 @@ class AmbienteFarol(Ambiente):
                 continue
 
             pos_a_evitar.update(self._pos_iniciais_agentes)
-            self.obstaculos = self._gerar_elementos(self.num_obstaculos_inicial, pos_a_evitar)
+            num_obstaculos = random.randint(self.num_obstaculos_inicial // 2, int(self.num_obstaculos_inicial * 1.5))
+            self.obstaculos = self._gerar_elementos(num_obstaculos, pos_a_evitar)
             
             #verificar caminho
             if num_agentes == 0 or all(self._tem_caminho(pos_inicial, self.pos_farol) for pos_inicial in self._pos_iniciais_agentes):
@@ -126,20 +135,19 @@ class AmbienteFarol(Ambiente):
         dist_discreta = ((dx > 0) - (dx < 0), (dy > 0) - (dy < 0))
 
         # Sensores de obstaculos
-        sensores = []
-        # Norte, Sul, Este, Oeste, Noroeste, Sudoeste, Nordeste, Sudeste
-        dirs = [(0, -1), (0, 1), (1, 0), (-1, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)]
-        for dx, dy in dirs:
+        sensores = {}
+        dirs = {"Norte": (0, -1), "Sul": (0, 1), "Este": (1, 0), "Oeste": (-1, 0), "Noroeste": (-1, -1), "Sudoeste": (-1, 1), "Nordeste": (1, -1), "Sudeste": (1, 1)}
+        for nome_dir, (dx, dy) in dirs.items():
             nx, ny = ax + dx, ay + dy
             # 1 se for obstáculo ou parede, 0 caso contrário
             if not (0 <= nx < self.largura and 0 <= ny < self.altura) or (nx, ny) in self.obstaculos:
-                sensores.append(1)
+                sensores[nome_dir] = 1
             else:
-                sensores.append(0)
+                sensores[nome_dir] = 0
 
         return {
             "distancia_discreta": dist_discreta,
-            "sensores": tuple(sensores)
+            "sensores": sensores
         }
 
     def agir(self, agente, accao):
@@ -158,31 +166,21 @@ class AmbienteFarol(Ambiente):
 
         nx, ny = x + dx, y + dy
 
-        # Lógica de colisão
-        pos_valida = 0 <= nx < self.largura and 0 <= ny < self.altura
-        
-        if not pos_valida:  # Colisão com a parede
-            # Posição não muda
-            return self.PENALIDADE_COLISAO + self.PENALIDADE_PARADO
-        
-        if (nx, ny) in self.obstaculos:  # Colisão com obstáculo
-            # Posição não muda
-            return self.PENALIDADE_OBSTACULO
+        # Usar o método da classe base para mover o agente
+        sucesso, recompensa_colisao = self._mover_agente(agente, (nx, ny))
 
-        # Colisão com outro agente
-        if (nx, ny) in self._posicoes_agentes.values() and (nx, ny) != (x,y):
-            # Posição não muda
-            return self.PENALIDADE_COLISAO
+        if not sucesso:
+            return recompensa_colisao
 
-        # Se não houver colisão, o agente move-se
-        self._posicoes_agentes[agente] = (nx, ny)
-        
-        if (nx, ny) == self.pos_farol:
+        # Se o movimento foi bem-sucedido, a posição do agente já foi atualizada
+        x, y = self._posicoes_agentes[agente] # Posição atualizada
+
+        if (x, y) == self.pos_farol:
             self.terminou = True
             return self.RECOMPENSA_FAROL
         
         # Distância de Manhattan depois do movimento
-        dist_depois = abs(nx - fx) + abs(ny - fy)
+        dist_depois = abs(x - fx) + abs(y - fy)
         
         # Reward shaping: recompensa amplificada por se aproximar do farol
         recompensa_dist = (dist_antes - dist_depois) * self.RECOMPENSA_APROXIMACAO_FATOR
@@ -190,12 +188,12 @@ class AmbienteFarol(Ambiente):
         recompensa_final = self.CUSTO_MOVIMENTO + recompensa_dist
 
         # Penalidade por repetição de posições recentes
-        if (nx, ny) in self._historico_posicoes.get(agente, []):
+        if (x, y) in self._historico_posicoes.get(agente, []):
             recompensa_final += self.PENALIDADE_REPETICAO
         
         # Adicionar posição atual ao histórico
         if agente in self._historico_posicoes:
-            self._historico_posicoes[agente].append((nx, ny))
+            self._historico_posicoes[agente].append((x, y))
 
         # Penalidade de tempo constante por passo
         recompensa_final -= self.PENALIDADE_TEMPO_FATOR

@@ -11,7 +11,7 @@ class Agente:
     def age(self):
         raise NotImplementedError
 
-    def avaliar_recompensa(self, recompensa):
+    def avaliar_recompensa(self, recompensa, obs=None):
         self.recompensa_total += recompensa
         pass
 
