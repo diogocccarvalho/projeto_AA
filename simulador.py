@@ -4,7 +4,14 @@ import random
 import copy
 import numpy as np
 import concurrent.futures
+
+# --- CORREÇÃO DO CRASH ---
+# Forçar o backend 'Agg' ANTES de importar o pyplot.
+# Isto impede que o Matplotlib tente usar o Tkinter/GUI nos processos paralelos.
+import matplotlib
+matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
+# -------------------------
 
 # --- Função auxiliar para multiprocessing (tem de estar fora da classe) ---
 def _avaliar_individuo_wrapper(args):
@@ -39,7 +46,7 @@ class Simulador:
         self._agentes.append(agente)
         self._ambiente.colocar_agente(agente)
         if verbose:
-            print(f"Agente adicionado. Número total de agentes: {len(self._agentes)}")
+            print(f"Agente adicionado (Total: {len(self._agentes)})")
         
         if equipa_id is None:
             self._equipas[agente] = f"Solo_{id(agente)}"
@@ -50,7 +57,7 @@ class Simulador:
     def guardar_agente(agente, filename):
         with open(filename, "wb") as f:
             pickle.dump(agente, f)
-        print(f"Agente guardado em: {filename}")
+        print(f"-> Agente guardado em: {filename}")
 
     def _processar_decisao_agente(self, agente):
         obs = self._ambiente.observacao_para(agente)
@@ -97,8 +104,7 @@ class Simulador:
         
         if visualizador:
             visualizador.desenhar()
-            if delay > 0:
-                visualizador.root.update()
+            visualizador.root.update()
 
     def obter_scores_equipas(self):
         scores = {}
@@ -111,14 +117,12 @@ class Simulador:
 
     @staticmethod
     def treinar_q(ClasseAmbiente, ClasseAgente, env_params, num_agentes, num_episodios=1000, guardar_em=None):
-        print(f"--- Treino Q-Learning Competitivo: {num_episodios} episódios ---")
+        print(f"--- Treino Q-Learning ({num_episodios} ep) ---")
 
         agentes = [ClasseAgente() for _ in range(num_agentes)]
         for ag in agentes:
             ag.learning_mode = True
         
-        print(f"{num_agentes} agentes criados. A métrica será o score do VENCEDOR (Max Score).")
-
         historico_max_scores = []
         melhor_media_vencedores = -float('inf')
         melhor_agente = None
@@ -130,9 +134,9 @@ class Simulador:
             sim.adicionar_agente(ag, verbose=False)
 
         for i in range(num_episodios):
+            # Reconfiguração dinâmica
             largura = random.randint(*env_params['largura'])
             altura = random.randint(*env_params['altura'])
-            
             env_kwargs = {'largura': largura, 'altura': altura}
             if 'num_obstaculos' in env_params:
                 min_obs, max_obs = env_params['num_obstaculos']
@@ -156,7 +160,7 @@ class Simulador:
 
             if (i+1) % 100 == 0:
                 media_recente = np.mean(historico_max_scores[-100:])
-                print(f"Episódio {i+1}: Média do Vencedor (últimos 100) = {media_recente:.2f}")
+                print(f"Ep {i+1}: Média Score (Top) = {media_recente:.2f}")
                 
                 if media_recente > melhor_media_vencedores:
                     melhor_media_vencedores = media_recente
@@ -166,19 +170,13 @@ class Simulador:
         if guardar_em and melhor_agente:
             Simulador.guardar_agente(melhor_agente, guardar_em)
         
-        if guardar_em and agentes:
-            final_agent = max(agentes, key=lambda a: getattr(a, 'recompensa_total', 0))
-            filename_final = guardar_em.replace('.pkl', '_final.pkl')
-            Simulador.guardar_agente(final_agent, filename_final)
-            print(f"NOTA: Agente do final do treino salvo em '{filename_final}'.")
-
         # Plot com janela grande de suavização para Q-Learning (muito ruído)
-        Simulador._plotar_progresso(historico_max_scores, guardar_em, "Q-Learning (Score Vencedor)", window_size=100)
+        Simulador._plotar_progresso(historico_max_scores, guardar_em, "Q-Learning", window_size=100)
         return historico_max_scores
 
     @staticmethod
     def treinar_genetico(ClasseAmbiente, ClasseAgente, env_params, pop_size, num_geracoes=50, guardar_em=None):
-        print(f"--- Treino Genético: {num_geracoes} gerações, População de {pop_size} ---")
+        print(f"--- Treino Genético ({num_geracoes} ger) ---")
 
         populacao = [ClasseAgente() for _ in range(pop_size)]
         melhor_global = None
@@ -210,7 +208,7 @@ class Simulador:
                 
                 historico_melhor_score.append(max_s)
 
-                print(f"Geração {g+1}: Melhor Score={max_s:.1f}, Média Score={avg_s:.1f}")
+                print(f"Ger {g+1}: Melhor={max_s:.1f}, Média={avg_s:.1f}")
                 
                 if max_s > best_score_global:
                     best_score_global = max_s
@@ -224,7 +222,7 @@ class Simulador:
             Simulador.guardar_agente(melhor_global, guardar_em)
         
         # Plot com janela menor para Genético (menos dados, menos ruído)
-        Simulador._plotar_progresso(historico_melhor_score, guardar_em, "Genético (Melhor Score)", window_size=20)
+        Simulador._plotar_progresso(historico_melhor_score, guardar_em, "Genético", window_size=20)
         return best_score_global
 
     @staticmethod
@@ -270,9 +268,6 @@ class Simulador:
 
     @staticmethod
     def _plotar_progresso(dados_principal, filename, titulo, extra_data=None, window_size=50):
-        """
-        Gera gráfico com Média Móvel (Suavizada) e Derivada.
-        """
         if not dados_principal: return
         
         # Converter para numpy e calcular média móvel (suavização)

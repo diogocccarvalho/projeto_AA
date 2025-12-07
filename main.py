@@ -1,7 +1,6 @@
 import pickle
 import os
 import glob
-import subprocess
 import sys
 import time
 import tkinter as tk
@@ -15,103 +14,98 @@ from ambientes.ambiente_recolecao import AmbienteRecolecao
 from agentes.agenteFarolQ import AgenteFarolQ
 from agentes.agenteRecolecaoQ import AgenteRecolecaoQ
 from agentes.agenteFarolEvo import AgenteFarolEvo
-import matplotlib.pyplot as plt
 from agentes.agenteRecolecaoEvo import AgenteRecolecaoEvo
-
-# ... (Funções auxiliares load_cerebro, demos, etc. mantêm-se iguais) ...
-# Vou apenas reescrever a função main() e as chamadas de treino para não ocupar espaço desnecessário
 
 def load_cerebro(file_path):
     if not os.path.exists(file_path):
+        print(f"Aviso: '{file_path}' não encontrado.")
         return None
     try:
         with open(file_path, "rb") as f:
             return pickle.load(f)
     except Exception as e:
-        print(f"Aviso: erro ao carregar '{file_path}': {e}")
+        print(f"Erro ao carregar '{file_path}': {e}")
         return None
 
-# ... [MANTÉM AS FUNÇÕES run_lighthouse_demo, run_foraging_demo, show_graphs, run_presentation IGUAIS] ...
-# COPIA AS FUNÇÕES DE DEMO DO TEU FICHEIRO ORIGINAL, ELAS ESTÃO BOAS.
-
 def run_lighthouse_demo():
-    print("\n--- Apresentação: Cenário Farol ---")
+    print("\n--- DEMO: Cenário Farol ---")
     sim = Simulador()
     amb = AmbienteFarol(largura=80, altura=80, num_obstaculos=200)
     gui = GuiFarol(amb, simulador=sim)
     sim.cria(amb)
-    ClasseQ = AgenteFarolQ
-    ClasseAgenteEvo = AgenteFarolEvo
-    save_file_q = "agente_farol_q.pkl" # Tenta carregar o normal
-    if os.path.exists("agente_farol_q_final.pkl"): save_file_q = "agente_farol_q_final.pkl" # Prioridade ao final
 
-    save_file_evo = "agente_farol_evo.pkl"
-    cerebro_q = load_cerebro(save_file_q)
-    cerebro_evo = load_cerebro(save_file_evo)
+    # Carregar cérebros
+    cerebro_q = load_cerebro("agente_farol_q.pkl")
+    cerebro_evo = load_cerebro("agente_farol_evo.pkl")
 
+    # Adicionar Agentes
     for i in range(2):
-        agente_q = ClasseQ()
-        if cerebro_q: agente_q.q_table = cerebro_q.q_table.copy()
-        agente_q.learning_mode = False
-        sim.adicionar_agente(agente_q, verbose=False, equipa_id=f"Q_{i}")
-        agente_evo = ClasseAgenteEvo()
-        if cerebro_evo: agente_evo.genes = cerebro_evo.genes
-        agente_evo.learning_mode = False
-        sim.adicionar_agente(agente_evo, verbose=False, equipa_id=f"Evo_{i}")
+        ag_q = AgenteFarolQ()
+        if cerebro_q: ag_q.q_table = cerebro_q.q_table.copy()
+        ag_q.learning_mode = False
+        sim.adicionar_agente(ag_q, verbose=False, equipa_id=f"Q_{i}")
+
+        ag_evo = AgenteFarolEvo()
+        if cerebro_evo: ag_evo.genes = cerebro_evo.genes
+        ag_evo.learning_mode = False
+        sim.adicionar_agente(ag_evo, verbose=False, equipa_id=f"Evo_{i}")
     
-    for r in range(3):
-        print(f"Ronda {r+1}/3")
-        sim.executa_episodio(visualizador=gui, delay=0.01, max_passos=1500)
+    # Executar
     try:
-        gui.root.after(3000, gui.root.destroy)
+        for r in range(3):
+            print(f"Ronda {r+1}/3")
+            sim.executa_episodio(visualizador=gui, delay=0.02, max_passos=1500)
+            gui.root.update()
+        
+        print("Demo Farol terminada. A janela fecha em 5s...")
+        gui.root.after(5000, gui.root.destroy)
         gui.root.mainloop()
-    except tk.TclError: pass
+    except tk.TclError:
+        print("Janela fechada.")
 
 def run_foraging_demo():
-    print("\n--- Apresentação: Cenário Recolha de Recursos ---")
+    print("\n--- DEMO: Cenário Recolha ---")
     sim = Simulador()
-    amb = AmbienteRecolecao(largura=50, altura=50, num_obstaculos=100, num_recursos=50)
+    amb = AmbienteRecolecao(largura=40, altura=40, num_obstaculos=60, num_recursos=40)
     gui = GuiRecolecao(amb, simulador=sim)
     sim.cria(amb)
     
-    ClasseQ = AgenteRecolecaoQ
-    ClasseAgenteEvo = AgenteRecolecaoEvo
-    
-    # Tenta carregar a versão FINAL (mais treinada) se existir
-    save_file_q = "agente_recolecao_q_final.pkl" if os.path.exists("agente_recolecao_q_final.pkl") else "agente_recolecao_q.pkl"
-    save_file_evo = "agente_recolecao_evo.pkl"
-
-    print(f"A carregar Q-Learning de: {save_file_q}")
-    cerebro_q = load_cerebro(save_file_q)
-    cerebro_evo = load_cerebro(save_file_evo)
+    cerebro_q = load_cerebro("agente_recolecao_q.pkl")
+    cerebro_evo = load_cerebro("agente_recolecao_evo.pkl")
         
+    # Adicionar Agentes (2 de cada equipa)
     for _ in range(2):
-        agente_q = ClasseQ()
-        if cerebro_q: agente_q.q_table = cerebro_q.q_table.copy()
-        agente_q.learning_mode = False
-        sim.adicionar_agente(agente_q, equipa_id=1, verbose=False)
+        ag_q = AgenteRecolecaoQ()
+        if cerebro_q: ag_q.q_table = cerebro_q.q_table.copy()
+        ag_q.learning_mode = False
+        sim.adicionar_agente(ag_q, equipa_id=1, verbose=False)
     
     for _ in range(2):
-        agente_evo = ClasseAgenteEvo()
-        if cerebro_evo: agente_evo.genes = cerebro_evo.genes
-        agente_evo.learning_mode = False
-        sim.adicionar_agente(agente_evo, equipa_id=2, verbose=False)
+        ag_evo = AgenteRecolecaoEvo()
+        if cerebro_evo: ag_evo.genes = cerebro_evo.genes
+        ag_evo.learning_mode = False
+        sim.adicionar_agente(ag_evo, equipa_id=2, verbose=False)
     
-    print("A executar 3 rondas de demonstração para a Recolha...")
-    for r in range(3):
-        print(f"Ronda {r+1}/3")
-        for agente in sim._agentes: agente.recompensa_total = 0
-        sim.executa_episodio(visualizador=gui, delay=0.01, max_passos=2000)
-
     try:
-        print("Janela fecha em 5s...")
+        print("A executar 3 rondas...")
+        for r in range(3):
+            print(f"Ronda {r+1}/3")
+            for ag in sim._agentes: ag.recompensa_total = 0
+            sim.executa_episodio(visualizador=gui, delay=0.03, max_passos=2000)
+            gui.root.update()
+
+        print("Demo Recolha terminada. A janela fecha em 5s...")
         gui.root.after(5000, gui.root.destroy)
         gui.root.mainloop()
-    except tk.TclError: pass
+    except tk.TclError:
+        print("Janela fechada.")
 
 def show_graphs():
-    print("\n--- A apresentar gráficos de treino ---")
+    print("\n--- Gráficos de Treino ---")
     graph_files = glob.glob("*_progress.png")
+    if not graph_files:
+        print("Nenhum gráfico encontrado.")
+        return
     for file_path in graph_files:
         try: webbrowser.open(f"file://{os.path.realpath(file_path)}")
         except: pass
@@ -121,79 +115,118 @@ def run_presentation():
     run_foraging_demo()
     show_graphs()
 
+# --- Funções de Treino Específicas ---
+
+def treinar_farol():
+    print("\n=== TREINO: FAROL (Q + EVO) ===")
+    params = {'largura': (20, 80), 'altura': (20, 80), 'num_obstaculos': (30, 120)}
+    
+    # Q-Learning
+    Simulador.treinar_q(
+        ClasseAmbiente=AmbienteFarol, ClasseAgente=AgenteFarolQ,
+        env_params=params, num_agentes=2, num_episodios=10000, 
+        guardar_em="agente_farol_q.pkl"
+    )
+    # Genético
+    Simulador.treinar_genetico(
+        ClasseAmbiente=AmbienteFarol, ClasseAgente=AgenteFarolEvo, 
+        env_params=params, pop_size=100, num_geracoes=10000, 
+        guardar_em="agente_farol_evo.pkl"
+    )
+
+def treinar_recolecao():
+    print("\n=== TREINO: RECOLEÇÃO (Q + EVO) ===")
+    # DICA: Começamos com mapas mais pequenos para eles aprenderem a lógica básica
+    params = {'largura': (15, 40), 'altura': (15, 40), 'num_obstaculos': (10, 50), 'num_recursos': (10, 30)}
+    
+    # Q-Learning (Precisa de muitos episódios para Q-Table convergir em estados complexos)
+    Simulador.treinar_q(
+        ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoQ,
+        env_params=params, num_agentes=5, num_episodios=20000, # Aumentado
+        guardar_em="agente_recolecao_q.pkl"
+    )
+    # Genético (População maior para explorar melhor)
+    Simulador.treinar_genetico(
+        ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoEvo, 
+        env_params=params, pop_size=1000, num_geracoes=10000, # Aumentado
+        guardar_em="agente_recolecao_evo.pkl"
+    )
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--modo", type=str, default="TREINO_Q_EVO_ALL")
-    parser.add_argument("--cenario", type=str, default="FAROL")
+    parser.add_argument("--modo", type=str, default="TREINO_ALL",
+        choices=["TREINO_ALL", "TREINO_FAROL", "TREINO_RECOLECAO", 
+                 "DEMO_Q", "DEMO_EVO", "DEMO_TEAMS", "DEMO_GIGANTE"])
+    parser.add_argument("--cenario", type=str, default="FAROL", choices=["FAROL", "RECOLECAO"])
     args = parser.parse_args()
-    MODO = args.modo.upper()
     
+    MODO = args.modo.upper()
+    CENARIO = args.cenario.upper()
+
+    # --- Seletor de Modos ---
     if MODO == "DEMO_GIGANTE":
         run_presentation()
-        return
-
-    sim = Simulador()
-    # Configuração dummy para instanciar classes, o treino reconfigura depois
-    if args.cenario == "FAROL":
-        amb = AmbienteFarol() 
-        ClasseQ = AgenteFarolQ
-        ClasseAgenteEvo = AgenteFarolEvo
-    else:
-        amb = AmbienteRecolecao()
-        ClasseQ = AgenteRecolecaoQ
-        ClasseAgenteEvo = AgenteRecolecaoEvo
-
-    if MODO == "TREINO_Q_EVO_ALL":
-        print("--- INICIANDO TREINO PESADO (VAI DEMORAR) ---")
     
-        # 1. FAROL (Já estava bom, mantemos parâmetros razoáveis)
-        print("\n>>> Treino Q-Learning: Farol")
-        env_params_farol = {'largura': (20, 50), 'altura': (20, 50), 'num_obstaculos': (40, 150)}
-        Simulador.treinar_q(
-            ClasseAmbiente=AmbienteFarol, 
-            ClasseAgente=AgenteFarolQ,
-            env_params=env_params_farol,
-            num_agentes=2,
-            num_episodios=10000, # Farol aprende rápido
-            guardar_em="agente_farol_q.pkl"
-        )
-
-        print("\n>>> Treino Genético: Farol")
-        Simulador.treinar_genetico(
-            ClasseAmbiente=AmbienteFarol,
-            ClasseAgente=AgenteFarolEvo, 
-            env_params=env_params_farol,
-            pop_size=250,
-            num_geracoes=1000, 
-            guardar_em="agente_farol_evo.pkl"
-        )
-
-        # 2. RECOLHA (AQUI É QUE PRECISA DE FORÇA BRUTA)
-        print("\n>>> Treino Q-Learning: Recolha (20k episódios)")
-        # Aumentamos a variabilidade do mapa para ele generalizar bem
-        env_params_recolha = {'largura': (20, 40), 'altura': (20, 40), 'num_obstaculos': (20, 60), 'num_recursos': (5, 15)}
+    elif MODO == "TREINO_ALL":
+        treinar_farol()
+        treinar_recolecao()
         
-        Simulador.treinar_q(
-            ClasseAmbiente=AmbienteRecolecao, 
-            ClasseAgente=AgenteRecolecaoQ,
-            env_params=env_params_recolha,
-            num_agentes=2,
-            num_episodios=50000,
-            guardar_em="agente_recolecao_q.pkl"
-        )
+    elif MODO == "TREINO_FAROL":
+        treinar_farol()
+        
+    elif MODO == "TREINO_RECOLECAO":
+        treinar_recolecao()
+        
+    elif "DEMO" in MODO:
+        # Lógica genérica de Demo para um único cenário
+        sim = Simulador()
+        if CENARIO == "FAROL":
+            amb = AmbienteFarol(largura=50, altura=50, num_obstaculos=80)
+            save_q = "agente_farol_q.pkl"
+            save_evo = "agente_farol_evo.pkl"
+            gui = GuiFarol(amb, simulador=sim)
+            AgQ = AgenteFarolQ
+            AgEvo = AgenteFarolEvo
+        else:
+            amb = AmbienteRecolecao(largura=30, altura=30, num_obstaculos=30, num_recursos=30)
+            save_q = "agente_recolecao_q.pkl"
+            save_evo = "agente_recolecao_evo.pkl"
+            gui = GuiRecolecao(amb, simulador=sim)
+            AgQ = AgenteRecolecaoQ
+            AgEvo = AgenteRecolecaoEvo
+        
+        sim.cria(amb)
+        cerebro_q = load_cerebro(save_q)
+        cerebro_evo = load_cerebro(save_evo)
 
-        print("\n>>> Treino Genético: Recolha (Cérebro Grande)")
-        # População grande para explorar o espaço de pesos maior (40 hidden neurons)
-        Simulador.treinar_genetico(
-            ClasseAmbiente=AmbienteRecolecao,
-            ClasseAgente=AgenteRecolecaoEvo, 
-            env_params=env_params_recolha,
-            pop_size=250,      # População robusta
-            num_geracoes=1000,  # Bastantes gerações
-            guardar_em="agente_recolecao_evo.pkl"
-        )
-
-        print("\n--- TREINO COMPLETO CONCLUÍDO ---")
+        # Configurar equipas
+        if MODO == "DEMO_TEAMS":
+            # 2 vs 2
+            for _ in range(2):
+                aq = AgQ()
+                if cerebro_q: aq.q_table = cerebro_q.q_table.copy()
+                aq.learning_mode = False
+                sim.adicionar_agente(aq, equipa_id=1, verbose=False)
+            for _ in range(2):
+                ae = AgEvo()
+                if cerebro_evo: ae.genes = cerebro_evo.genes
+                ae.learning_mode = False
+                sim.adicionar_agente(ae, equipa_id=2, verbose=False)
+        else:
+            # Apenas 1 tipo
+            TipoAgente = AgQ if MODO == "DEMO_Q" else AgEvo
+            Cerebro = cerebro_q if MODO == "DEMO_Q" else cerebro_evo
+            for _ in range(2):
+                ag = TipoAgente()
+                if Cerebro: 
+                    if MODO == "DEMO_Q": ag.q_table = Cerebro.q_table
+                    else: ag.genes = Cerebro.genes
+                ag.learning_mode = False
+                sim.adicionar_agente(ag, verbose=False)
+        
+        print(f"A iniciar DEMO ({MODO}) no cenário {CENARIO}...")
+        sim.executa_episodio(visualizador=gui, delay=0.1)
+        gui.root.mainloop()
 
 if __name__ == "__main__":
     main()
