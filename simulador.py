@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 def _avaliar_individuo_wrapper(args):
     """
     Função helper para avaliar um indivíduo em paralelo.
-    Recebe um tuplo: (agente, config_ambiente, ClasseAmbiente)
     """
     agent, env_config, ClasseAmbiente = args
     
@@ -77,7 +76,6 @@ class Simulador:
         for ag in self._agentes:
             decisoes.append(self._processar_decisao_agente(ag))
 
-        # Ordem aleatória para evitar prioridade fixa
         random.shuffle(decisoes)
 
         for agente, acao in decisoes:
@@ -99,7 +97,6 @@ class Simulador:
         
         if visualizador:
             visualizador.desenhar()
-            # Pequena pausa apenas se estivermos em modo GUI interativo, não em treino
             if delay > 0:
                 visualizador.root.update()
 
@@ -122,7 +119,7 @@ class Simulador:
         
         print(f"{num_agentes} agentes criados. A métrica será o score do VENCEDOR (Max Score).")
 
-        historico_max_scores = []  # MUDANÇA: Guardar o máximo em vez da média
+        historico_max_scores = []
         melhor_media_vencedores = -float('inf')
         melhor_agente = None
 
@@ -133,7 +130,6 @@ class Simulador:
             sim.adicionar_agente(ag, verbose=False)
 
         for i in range(num_episodios):
-            # Reconfiguração do ambiente
             largura = random.randint(*env_params['largura'])
             altura = random.randint(*env_params['altura'])
             
@@ -155,30 +151,29 @@ class Simulador:
             sim.executa_episodio(visualizador=None, delay=0)
             
             scores = [ag.recompensa_total for ag in sim._agentes]
-            
-            # MUDANÇA CRÍTICA: Usamos o MAX (quem ganhou) para avaliar o episódio
             score_vencedor = max(scores) if scores else 0
             historico_max_scores.append(score_vencedor)
 
             if (i+1) % 100 == 0:
-                # Avalia a performance baseada na consistência dos vencedores
                 media_recente = np.mean(historico_max_scores[-100:])
                 print(f"Episódio {i+1}: Média do Vencedor (últimos 100) = {media_recente:.2f}")
                 
                 if media_recente > melhor_media_vencedores:
                     melhor_media_vencedores = media_recente
-                    # Encontrar e guardar o agente que venceu este episódio específico
                     best_agent_now = max(sim._agentes, key=lambda a: a.recompensa_total)
                     melhor_agente = copy.deepcopy(best_agent_now)
-
-        if melhor_agente is None and agentes:
-            melhor_agente = agentes[0]
 
         if guardar_em and melhor_agente:
             Simulador.guardar_agente(melhor_agente, guardar_em)
         
-        # Plotar usando a nova métrica
-        Simulador._plotar_progresso(historico_max_scores, guardar_em, "Q-Learning (Score do Vencedor)")
+        if guardar_em and agentes:
+            final_agent = max(agentes, key=lambda a: getattr(a, 'recompensa_total', 0))
+            filename_final = guardar_em.replace('.pkl', '_final.pkl')
+            Simulador.guardar_agente(final_agent, filename_final)
+            print(f"NOTA: Agente do final do treino salvo em '{filename_final}'.")
+
+        # Plot com janela grande de suavização para Q-Learning (muito ruído)
+        Simulador._plotar_progresso(historico_max_scores, guardar_em, "Q-Learning (Score Vencedor)", window_size=100)
         return historico_max_scores
 
     @staticmethod
@@ -190,11 +185,9 @@ class Simulador:
         best_score_global = -float('inf')
 
         historico_melhor_score = []
-        historico_media_score = []
 
         with concurrent.futures.ProcessPoolExecutor() as executor:
             for g in range(num_geracoes):
-                # Preparar configurações para avaliação em paralelo
                 args_list = []
                 for ind in populacao:
                     largura = random.randint(*env_params['largura'])
@@ -208,17 +201,14 @@ class Simulador:
                         min_rec, max_rec = env_params['num_recursos']
                         env_kwargs['num_recursos'] = random.randint(min_rec, max_rec)
                     
-                    # Passamos também a ClasseAmbiente para o worker poder instanciar
                     args_list.append((ind, env_kwargs, ClasseAmbiente))
 
-                # Avaliar população em paralelo
                 scores = list(executor.map(_avaliar_individuo_wrapper, args_list))
 
                 max_s = max(scores) if scores else -float('inf')
                 avg_s = np.mean(scores) if scores else -float('inf')
                 
                 historico_melhor_score.append(max_s)
-                historico_media_score.append(avg_s)
 
                 print(f"Geração {g+1}: Melhor Score={max_s:.1f}, Média Score={avg_s:.1f}")
                 
@@ -228,51 +218,37 @@ class Simulador:
                         idx_best = scores.index(max_s)
                         melhor_global = copy.deepcopy(populacao[idx_best])
 
-                # Reprodução (Nova geração)
                 populacao = Simulador._reproduzir_populacao(populacao, scores, pop_size)
 
         if guardar_em and melhor_global:
             Simulador.guardar_agente(melhor_global, guardar_em)
         
-        # Plot adaptado para genético
-        Simulador._plotar_progresso(historico_melhor_score, guardar_em, "Genético (Melhor Score)", extra_data=historico_media_score)
-
+        # Plot com janela menor para Genético (menos dados, menos ruído)
+        Simulador._plotar_progresso(historico_melhor_score, guardar_em, "Genético (Melhor Score)", window_size=20)
         return best_score_global
 
     @staticmethod
     def _reproduzir_populacao(populacao, scores, pop_size, elite_pct=0.1, mutation_rate=0.05):
-        """
-        Gera uma nova população baseada nos scores atuais.
-        Inclui Elitismo, Torneio e Mutação.
-        """
         nova_populacao = []
-        
-        # 1. Elitismo: Manter os melhores X%
         num_elites = max(1, int(pop_size * elite_pct))
-        indices_ordenados = np.argsort(scores)[::-1] # Decrescente
+        indices_ordenados = np.argsort(scores)[::-1]
         
         for i in range(num_elites):
             idx = indices_ordenados[i]
             nova_populacao.append(copy.deepcopy(populacao[idx]))
             
-        # 2. Preencher o resto da população
         while len(nova_populacao) < pop_size:
-            # Seleção por Torneio
             pai1 = Simulador._torneio(populacao, scores)
             pai2 = Simulador._torneio(populacao, scores)
             
-            # Crossover (Média dos pesos)
             filho = copy.deepcopy(pai1)
             genes_p1 = pai1.genes
             genes_p2 = pai2.genes
             
-            # Cruzamento simples: média dos pesos
             genes_filho = (genes_p1 + genes_p2) / 2.0
             
-            # Mutação (Adicionar ruído aleatório)
-            if random.random() < 0.8: # Chance de sofrer mutação
+            if random.random() < 0.8:
                 noise = np.random.randn(len(genes_filho)) * mutation_rate
-                # Máscara para afetar apenas alguns genes ou todos? Aqui afeta todos um pouco (Gaussian)
                 genes_filho += noise
             
             filho.genes = genes_filho
@@ -293,24 +269,52 @@ class Simulador:
         return populacao[best_idx]
 
     @staticmethod
-    def _plotar_progresso(dados_principal, filename, titulo, extra_data=None):
+    def _plotar_progresso(dados_principal, filename, titulo, extra_data=None, window_size=50):
+        """
+        Gera gráfico com Média Móvel (Suavizada) e Derivada.
+        """
         if not dados_principal: return
         
-        fig, ax1 = plt.subplots(figsize=(10, 6))
-        episodios = range(len(dados_principal))
-        
-        ax1.plot(episodios, dados_principal, label='Principal (Média/Melhor)', color='b')
-        if extra_data:
-            ax1.plot(episodios, extra_data, label='Média', color='c', linestyle='--')
+        # Converter para numpy e calcular média móvel (suavização)
+        data = np.array(dados_principal)
+        if len(data) > window_size:
+            kernel = np.ones(window_size) / window_size
+            data_smoothed = np.convolve(data, kernel, mode='valid')
+            # Ajustar eixo X para corresponder à convolução
+            x_axis = np.arange(window_size - 1, len(data))
+        else:
+            data_smoothed = data
+            x_axis = np.arange(len(data))
             
-        ax1.set_xlabel('Iteração')
-        ax1.set_ylabel('Score')
-        plt.title(f'Progresso de Treino: {titulo}')
-        plt.legend()
-        plt.grid(True)
+        # Calcular Derivada (Tendência)
+        derivada = np.gradient(data_smoothed)
+        
+        fig, ax1 = plt.subplots(figsize=(12, 7))
+        
+        # Eixo 1: Score Suavizado
+        color = 'tab:blue'
+        ax1.set_xlabel('Episódio / Geração')
+        ax1.set_ylabel('Score (Média Móvel)', color=color, fontweight='bold')
+        ax1.plot(x_axis, data_smoothed, color=color, linewidth=2, label='Score (Suavizado)')
+        ax1.tick_params(axis='y', labelcolor=color)
+        ax1.grid(True, linestyle='--', alpha=0.7)
+        
+        # Eixo 2: Derivada (Taxa de Aprendizagem)
+        ax2 = ax1.twinx()
+        color = 'tab:orange'
+        ax2.set_ylabel('Derivada (Tendência de Aprendizagem)', color=color, fontweight='bold')
+        ax2.plot(x_axis, derivada, color=color, linestyle='--', linewidth=1.5, label='Derivada', alpha=0.8)
+        ax2.tick_params(axis='y', labelcolor=color)
+        
+        # Linha de referência zero para a derivada
+        ax2.axhline(0, color='grey', linewidth=1, linestyle='-')
+        
+        # Título e Legendas
+        plt.title(f'Evolução do Treino: {titulo}\n(Janela de Suavização: {window_size})', fontsize=14)
+        fig.tight_layout()
         
         if filename:
             nome_grafico = filename.replace('.pkl', '_progress.png')
             plt.savefig(nome_grafico)
-            print(f"Gráfico guardado: {nome_grafico}")
+            print(f"Gráfico melhorado guardado: {nome_grafico}")
         plt.close(fig)

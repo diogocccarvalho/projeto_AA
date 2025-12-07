@@ -196,9 +196,9 @@ def main():
     # Restante da lógica...
     if MODO == "TREINO_Q":
         print("--- Preparando treino Q-learning ---")
-        env_params = {'largura': (20, 40), 'altura': (20, 40)}
+        env_params = {'largura': (10, 100), 'altura': (10, 100)}
         if CENARIO == "RECOLECAO":
-            env_params.update({'num_obstaculos': (20, 80), 'num_recursos': (5, 20)})
+            env_params.update({'num_obstaculos': (20, 80), 'num_recursos': (5, 25)})
         else: # FAROL
             env_params.update({'num_obstaculos': (40, 100)})
 
@@ -207,15 +207,15 @@ def main():
             ClasseAgente=ClasseQ,
             env_params=env_params,
             num_agentes=2,
-            num_episodios=2500, 
+            num_episodios=10000, 
             guardar_em=save_file_q
         )
 
     elif MODO == "TREINO_EVO":
         print("--- Preparando treino genético ---")
-        env_params = {'largura': (20, 40), 'altura': (20, 40)}
+        env_params = {'largura': (10, 100), 'altura': (10, 100)}
         if CENARIO == "RECOLECAO":
-            env_params.update({'num_obstaculos': (20, 80), 'num_recursos': (5, 20)})
+            env_params.update({'num_obstaculos': (20, 80), 'num_recursos': (5, 25)})
         else: # FAROL
             env_params.update({'num_obstaculos': (40, 150)})
             
@@ -224,7 +224,7 @@ def main():
             ClasseAgente=ClasseAgenteEvo, 
             env_params=env_params,
             pop_size=100,
-            num_geracoes=500, 
+            num_geracoes=1000, 
             guardar_em=save_file_evo
         )
 
@@ -233,13 +233,13 @@ def main():
     
         # 1. Treino Q-Learning Farol
         print("\n--- Treino Q-Learning: Cenário Farol ---")
-        env_params_farol = {'largura': (20, 40), 'altura': (20, 40), 'num_obstaculos': (40, 150)}
+        env_params_farol = {'largura': (10, 100), 'altura': (10, 100), 'num_obstaculos': (20, 150)}
         Simulador.treinar_q(
             ClasseAmbiente=AmbienteFarol, 
             ClasseAgente=AgenteFarolQ,
             env_params=env_params_farol,
-            num_agentes=2,
-            num_episodios=10000, 
+            num_agentes=3,
+            num_episodios=1000000, 
             guardar_em="agente_farol_q.pkl"
         )
 
@@ -249,20 +249,20 @@ def main():
             ClasseAmbiente=AmbienteFarol,
             ClasseAgente=AgenteFarolEvo, 
             env_params=env_params_farol,
-            pop_size=50,
-            num_geracoes=1000, 
+            pop_size=500,
+            num_geracoes=10000, 
             guardar_em="agente_farol_evo.pkl"
         )
 
         # 3. Treino Q-Learning Recolha
         print("\n--- Treino Q-Learning: Cenário Recolha ---")
-        env_params_recolha = {'largura': (20, 40), 'altura': (20, 40), 'num_obstaculos': (20, 80), 'num_recursos': (5, 20)}
+        env_params_recolha = {'largura': (10, 100), 'altura': (10, 100), 'num_obstaculos': (20, 80), 'num_recursos': (5, 25)}
         Simulador.treinar_q(
             ClasseAmbiente=AmbienteRecolecao, 
             ClasseAgente=AgenteRecolecaoQ,
             env_params=env_params_recolha,
-            num_agentes=2,
-            num_episodios=10000, 
+            num_agentes=3,
+            num_episodios=1000000, 
             guardar_em="agente_recolecao_q.pkl"
         )
 
@@ -272,8 +272,8 @@ def main():
             ClasseAmbiente=AmbienteRecolecao,
             ClasseAgente=AgenteRecolecaoEvo, 
             env_params=env_params_recolha,
-            pop_size=50,
-            num_geracoes=1000, 
+            pop_size=500,
+            num_geracoes=10000, 
             guardar_em="agente_recolecao_evo.pkl"
         )
 

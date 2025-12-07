@@ -9,13 +9,14 @@ class AmbienteRecolecao(Ambiente):
     PENALIDADE_ACAO_INVALIDA = -10.0
     CUSTO_MOVIMENTO = -0.1
     
-    # Recompensas e penalidades espelhadas do AmbienteFarol
-    PENALIDADE_COLISAO = -1.0
+    # NOVAS PENALIDADES BALANCEADAS
     PENALIDADE_OBSTACULO = -5.0
-    PENALIDADE_REPETICAO = -2.5
+    PENALIDADE_COLISAO = -2.0     # Paredes
+    PENALIDADE_REPETICAO = -1.5   # Menos grave que bater na parede -> Permite sair de loops
     PENALIDADE_PARADO = -1.0
+    
     RECOMPENSA_APROXIMACAO_FATOR = 1.0
-    TAMANHO_HISTORICO = 5
+    TAMANHO_HISTORICO = 40        # Memória Longa
     PENALIDADE_TEMPO_SEM_DEPOSITO = -0.05
 
     def __init__(self, largura=20, altura=20, num_recursos=10, num_obstaculos=10):
@@ -30,7 +31,7 @@ class AmbienteRecolecao(Ambiente):
         
         self.agentes_carga = {}
         self._pos_iniciais_agentes = []
-        self._historico_posicoes = {} # Adicionado
+        self._historico_posicoes = {} 
         self.reset()
 
     def reconfigurar(self, **kwargs):
@@ -39,7 +40,6 @@ class AmbienteRecolecao(Ambiente):
         self.num_recursos_inicial = kwargs.get('num_recursos', self.num_recursos_inicial)
         self.num_obstaculos_inicial = kwargs.get('num_obstaculos', self.num_obstaculos_inicial)
         self.reset()
-
 
     def _gerar_pos_aleatoria(self, pos_a_evitar=set()):
         while True:
@@ -58,15 +58,13 @@ class AmbienteRecolecao(Ambiente):
         return elementos
 
     def _tem_caminho(self, inicio, fim):
-        if not fim: return True # Se não há alvo, há "caminho"
-        if inicio == fim:
-            return True
+        if not fim: return True 
+        if inicio == fim: return True
         fronteira = deque([inicio])
         visitados = {inicio}
         while fronteira:
             (x, y) = fronteira.popleft()
-            if (x, y) == fim:
-                return True
+            if (x, y) == fim: return True
             for dx, dy in [(0, -1), (0, 1), (1, 0), (-1, 0)]:
                 nx, ny = x + dx, y + dy
                 pos_vizinho = (nx, ny)
@@ -75,7 +73,6 @@ class AmbienteRecolecao(Ambiente):
                     visitados.add(pos_vizinho)
                     fronteira.append(pos_vizinho)
         return False
-
 
     def reset(self):
         self.terminou = False
@@ -144,6 +141,9 @@ class AmbienteRecolecao(Ambiente):
             pos_recurso_proximo = self._encontrar_recurso_mais_proximo(pos_agente)
             if pos_recurso_proximo:
                 tx, ty = pos_recurso_proximo
+            # CORREÇÃO: Se não há recursos, o objetivo é o ninho (para não ficarem parados)
+            elif not self.recursos:
+                tx, ty = self.pos_ninho
             else: 
                 tx, ty = ax, ay 
 
@@ -176,35 +176,39 @@ class AmbienteRecolecao(Ambiente):
         }
 
     def agir(self, agente, accao):
-        if self.terminou:
-            return 0
+        if self.terminou: return 0
 
         self.passos_sem_deposito += 1
         x, y = self._posicoes_agentes[agente]
         carregando = self.agentes_carga.get(agente, False)
 
-        alvo = self.pos_ninho if carregando else self._encontrar_recurso_mais_proximo((x, y))
+        # Mesma lógica do observacao_para
+        alvo = None
+        if carregando:
+            alvo = self.pos_ninho
+        else:
+            res = self._encontrar_recurso_mais_proximo((x, y))
+            if res:
+                alvo = res
+            elif not self.recursos:
+                alvo = self.pos_ninho
 
         dist_antes = 0
         if alvo:
             dist_antes = abs(x - alvo[0]) + abs(y - alvo[1])
-        else:
-            # Se não há alvo, o agente não deve ser penalizado ou recompensado pela distância
-            dist_antes = 0
 
         movimentos = {"Norte": (0, -1), "Sul": (0, 1), "Este": (1, 0), "Oeste": (-1, 0)}
         if accao in movimentos:
             dx, dy = movimentos[accao]
             nx, ny = x + dx, y + dy
 
-            sucesso, recompensa_colisao = self._mover_agente(agente, (nx, ny))
-
+            sucesso, _ = self._mover_agente(agente, (nx, ny))
             if not sucesso:
-                return recompensa_colisao
+                if (nx, ny) in self.obstaculos:
+                    return self.PENALIDADE_OBSTACULO
+                return self.PENALIDADE_COLISAO # Paredes
             
-            # Posição atualizada
             nx, ny = self._posicoes_agentes[agente]
-
             recompensa_dist = 0
             if alvo:
                 dist_depois = abs(nx - alvo[0]) + abs(ny - alvo[1])
@@ -219,9 +223,9 @@ class AmbienteRecolecao(Ambiente):
             
             return recompensa_final + (self.passos_sem_deposito * self.PENALIDADE_TEMPO_SEM_DEPOSITO)
 
-        else: # Ações "Recolher" ou "Depositar"
+        else: 
             self._passos_parado[agente] += 1
-            penalidade_parado = self._passos_parado[agente] * self.PENALIDADE_PARADO_CRESCENTE
+            penalidade_parado = self._passos_parado[agente] * -0.2
 
             if accao == "Recolher":
                 if (x, y) in self.recursos and not carregando:

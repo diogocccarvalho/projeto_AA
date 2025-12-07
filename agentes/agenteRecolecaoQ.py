@@ -8,12 +8,11 @@ class AgenteRecolecaoQ(AgenteQ):
 
     def _formar_estado(self, obs):
         if obs is None:
-            # Default state: no direction, medium distance, no obstacles, not carrying
-            return ((0, 0), 1, tuple(), False)
+            return ((0, 0), 1, tuple(), False, None)
 
-        # Converter o dicionário de sensores para uma tuple de items para ser hasheable
         sensores_tuple = tuple(sorted(obs['sensores'].items()))
-        return (obs['direcao_alvo'], obs['distancia_discreta'], sensores_tuple, obs['carregando'])
+        
+        return (obs['direcao_alvo'], obs['distancia_discreta'], sensores_tuple, obs['carregando'], self.acao_anterior)
 
     def _get_accoes_validas(self, estado):
         accoes_validas = ["Norte", "Sul", "Este", "Oeste"]
