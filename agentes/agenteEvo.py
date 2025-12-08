@@ -2,12 +2,68 @@ import numpy as np
 from agentes.agente import Agente
 
 class AgenteEvo(Agente):
-    def __init__(self, input_size, hidden_size, output_size):
+    def __init__(self, input_size, hidden1_size, hidden2_size, output_size):
         super().__init__()
-        self.W1 = np.random.randn(input_size, hidden_size)
-        self.b1 = np.zeros((1, hidden_size))
-        self.W2 = np.random.randn(hidden_size, output_size)
-        self.b2 = np.zeros((1, output_size))
+        self.input_size = input_size
+        self.h1_size = hidden1_size
+        self.h2_size = hidden2_size
+        self.output_size = output_size
+        
+        # Calcular tamanhos das camadas
+        self.s1 = input_size * hidden1_size
+        self.sb1 = hidden1_size
+        self.s2 = hidden1_size * hidden2_size
+        self.sb2 = hidden2_size
+        self.s3 = hidden2_size * output_size
+        self.sb3 = output_size
+        
+        self.num_genes = self.s1 + self.sb1 + self.s2 + self.sb2 + self.s3 + self.sb3
+
+        # --- CORREÇÃO CRÍTICA DE INICIALIZAÇÃO ---
+        # Usamos uma variância muito baixa (0.05) para evitar saturação.
+        # Isto impede que o agente nasça a querer bater numa parede para sempre.
+        self._genes = np.random.randn(self.num_genes) * 0.05
+        
+        self._decodificar_genes()
+
+    def _decodificar_genes(self):
+        """Reconstroi as matrizes de pesos para serem usadas no feedforward"""
+        idx = 0
+        
+        # W1, b1
+        end = idx + self.s1
+        self.W1 = self._genes[idx:end].reshape(self.input_size, self.h1_size)
+        idx = end
+        end = idx + self.sb1
+        self.b1 = self._genes[idx:end].reshape(1, self.h1_size)
+        idx = end
+        
+        # W2, b2
+        end = idx + self.s2
+        self.W2 = self._genes[idx:end].reshape(self.h1_size, self.h2_size)
+        idx = end
+        end = idx + self.sb2
+        self.b2 = self._genes[idx:end].reshape(1, self.h2_size)
+        idx = end
+        
+        # W3, b3
+        end = idx + self.s3
+        self.W3 = self._genes[idx:end].reshape(self.h2_size, self.output_size)
+        idx = end
+        end = idx + self.sb3
+        self.b3 = self._genes[idx:end].reshape(1, self.output_size)
+
+    @property
+    def genes(self):
+        return self._genes
+
+    @genes.setter
+    def genes(self, novos_genes):
+        if len(novos_genes) != self.num_genes:
+            # Proteção contra erros de tamanho
+            return 
+        self._genes = np.array(novos_genes)
+        self._decodificar_genes()
 
     def _formar_estado(self, obs):
         raise NotImplementedError
@@ -16,25 +72,18 @@ class AgenteEvo(Agente):
         obs = self._formar_estado(self.ultima_observacao)
         obs_vector = np.array(obs).flatten().reshape(1, -1)
         
-        # Forward pass
-        h1 = np.maximum(0, np.dot(obs_vector, self.W1) + self.b1) # ReLU activation
-        scores = np.dot(h1, self.W2) + self.b2
+        # --- Deep Forward Pass (2 Hidden Layers) ---
+        # Camada 1 (ReLU)
+        h1 = np.maximum(0, np.dot(obs_vector, self.W1) + self.b1)
         
-        # Choose action with the highest score
+        # Camada 2 (ReLU)
+        h2 = np.maximum(0, np.dot(h1, self.W2) + self.b2)
+        
+        # Output (Linear)
+        scores = np.dot(h2, self.W3) + self.b3
+        
+        # Escolher ação
         acao_idx = np.argmax(scores)
-        return self.accoes[acao_idx]
-
-    @property
-    def genes(self):
-        return np.concatenate([self.W1.flatten(), self.b1.flatten(), self.W2.flatten(), self.b2.flatten()])
-
-    @genes.setter
-    def genes(self, genes):
-        s1 = self.W1.size
-        s2 = self.b1.size
-        s3 = self.W2.size
-        
-        self.W1 = genes[0:s1].reshape(self.W1.shape)
-        self.b1 = genes[s1:s1+s2].reshape(self.b1.shape)
-        self.W2 = genes[s1+s2:s1+s2+s3].reshape(self.W2.shape)
-        self.b2 = genes[s1+s2+s3:].reshape(self.b2.shape)
+        if hasattr(self, 'accoes') and acao_idx < len(self.accoes):
+            return self.accoes[acao_idx]
+        return None

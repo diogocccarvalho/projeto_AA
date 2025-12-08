@@ -124,31 +124,31 @@ def treinar_farol():
     # Q-Learning
     Simulador.treinar_q(
         ClasseAmbiente=AmbienteFarol, ClasseAgente=AgenteFarolQ,
-        env_params=params, num_agentes=2, num_episodios=10000, 
+        env_params=params, num_agentes=2, num_episodios=100000, 
         guardar_em="agente_farol_q.pkl"
     )
     # Genético
     Simulador.treinar_genetico(
         ClasseAmbiente=AmbienteFarol, ClasseAgente=AgenteFarolEvo, 
-        env_params=params, pop_size=100, num_geracoes=10000, 
+        env_params=params, pop_size=200, num_geracoes=10000, 
         guardar_em="agente_farol_evo.pkl"
     )
 
 def treinar_recolecao():
     print("\n=== TREINO: RECOLEÇÃO (Q + EVO) ===")
     # DICA: Começamos com mapas mais pequenos para eles aprenderem a lógica básica
-    params = {'largura': (15, 40), 'altura': (15, 40), 'num_obstaculos': (10, 50), 'num_recursos': (10, 30)}
+    params = {'largura': (15, 20), 'altura': (15, 20), 'num_obstaculos': (5, 10), 'num_recursos': (15, 25)}
     
     # Q-Learning (Precisa de muitos episódios para Q-Table convergir em estados complexos)
     Simulador.treinar_q(
         ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoQ,
-        env_params=params, num_agentes=5, num_episodios=20000, # Aumentado
+        env_params=params, num_agentes=4, num_episodios=100000, # Aumentado
         guardar_em="agente_recolecao_q.pkl"
     )
     # Genético (População maior para explorar melhor)
     Simulador.treinar_genetico(
         ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoEvo, 
-        env_params=params, pop_size=1000, num_geracoes=10000, # Aumentado
+        env_params=params, pop_size=500, num_geracoes=10000, # Aumentado
         guardar_em="agente_recolecao_evo.pkl"
     )
 

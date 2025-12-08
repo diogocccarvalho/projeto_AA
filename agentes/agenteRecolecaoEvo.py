@@ -3,15 +3,9 @@ import numpy as np
 
 class AgenteRecolecaoEvo(AgenteEvo):
     def __init__(self):
-        # Input size: 
-        # 2 (direcao alvo) 
-        # + 4 (distancia discreta: 0,1,2,3) 
-        # + 8 (sensores obstaculos) 
-        # + 1 (carregando) 
-        # = 15
-        
-        # Aumentado para 50 neurónios na camada oculta para tentar resolver o looping
-        super().__init__(input_size=15, hidden_size=50, output_size=6)
+        # Input size: 15 (2 dir + 4 dist + 8 sensores + 1 carga)
+        # Arquitetura robusta: 15 -> 40 -> 30 -> 6
+        super().__init__(input_size=15, hidden1_size=40, hidden2_size=30, output_size=6)
         self.accoes = ["Norte", "Sul", "Este", "Oeste", "Recolher", "Depositar"]
 
     def _formar_estado(self, obs):
@@ -20,7 +14,6 @@ class AgenteRecolecaoEvo(AgenteEvo):
             
         direcao = np.array(obs['direcao_alvo'])
         
-        # One-hot encoding da distância (0 a 3)
         dist_one_hot = np.zeros(4)
         d_idx = int(obs['distancia_discreta'])
         if 0 <= d_idx < 4:

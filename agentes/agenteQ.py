@@ -68,6 +68,26 @@ class AgenteQ(Agente):
     def age(self):
         estado_atual = self._formar_estado(self.ultima_observacao)
         
+        # --- LOOP BREAKER (Correção para a Demo) ---
+        # Se não estamos a aprender (Modo Demo), verificamos se estamos presos
+        if not self.learning_mode:
+            # Hash simples do estado para detetar repetição imediata
+            # Usamos um histórico local curto apenas para detetar loops
+            if not hasattr(self, '_demo_history'): self._demo_history = []
+            
+            self._demo_history.append(estado_atual)
+            if len(self._demo_history) > 10: self._demo_history.pop(0)
+            
+            # Se o mesmo estado aparece 3 vezes nos últimos 10 passos -> PÂNICO
+            if self._demo_history.count(estado_atual) >= 3:
+                # Força uma ação aleatória para sair do loop
+                acao = random.choice(self._get_accoes_validas(estado_atual))
+                self.estado_anterior = estado_atual
+                self.acao_anterior = acao
+                self._demo_history = [] 
+                return acao
+        # -------------------------------------------
+
         if self.learning_mode and random.random() < self.epsilon:
             acao = random.choice(self._get_accoes_validas(estado_atual))
         else:
