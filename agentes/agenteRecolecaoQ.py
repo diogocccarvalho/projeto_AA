@@ -16,8 +16,9 @@ class AgenteRecolecaoQ(AgenteQ):
             # Estado para quando a observação não é válida (ex: início do episódio)
             return ( (0,0), (0,0), tuple([0]*8), False )
 
-        # A tupla de sensores precisa de ser ordenada para consistência
-        sensores_tuple = tuple(sorted(obs['sensores'].values()))
+        # FIX: Use items() instead of values() to preserve direction information of obstacles
+        # Sorted garante que a ordem 'Norte', 'Sul' etc se mantém consistente
+        sensores_tuple = tuple(sorted(obs['sensores'].items()))
 
         # O estado é uma combinação da informação contextual (sem distâncias)
         return (

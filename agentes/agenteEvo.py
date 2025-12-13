@@ -58,9 +58,10 @@ class AgenteEvo(Agente):
 
     @genes.setter
     def genes(self, novos_genes):
+        # FIX: Raise Error instead of silent failure
         if len(novos_genes) != self.num_genes:
-            # Proteção contra erros de tamanho
-            return 
+            raise ValueError(f"CRITICAL: Gene size mismatch! Brain has {len(novos_genes)}, Code expects {self.num_genes}. Retrain the agent or check architecture.")
+            
         self._genes = np.array(novos_genes)
         self._decodificar_genes()
 
