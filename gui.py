@@ -80,7 +80,27 @@ class GUI:
             
         self._limpar_dinamicos()
         self._desenhar_elementos_dinamicos()
+        self._desenhar_caminho_otimo()
         self._atualizar_tela()
+
+    def _desenhar_caminho_otimo(self):
+        if not hasattr(self.amb, 'caminhos_otimos_visual'):
+            return
+        
+        tc = self.tc
+        for caminho in self.amb.caminhos_otimos_visual.values():
+            if not caminho:
+                continue
+
+            for (x, y) in caminho:
+                # Desenhar um pequeno círculo no centro da célula
+                self.canvas.create_oval(
+                    x * tc + tc * 0.35, y * tc + tc * 0.35,
+                    x * tc + tc * 0.65, y * tc + tc * 0.65,
+                    fill="#FFD700",  # Amarelo Dourado
+                    outline="",
+                    tags='dinamico'
+                )
 
     def _desenhar_elementos_estaticos(self):
         raise NotImplementedError

@@ -19,7 +19,6 @@ class AgenteEvo(Agente):
         
         self.num_genes = self.s1 + self.sb1 + self.s2 + self.sb2 + self.s3 + self.sb3
 
-        # --- CORREÇÃO CRÍTICA DE INICIALIZAÇÃO ---
         # Usamos uma variância muito baixa (0.05) para evitar saturação.
         # Isto impede que o agente nasça a querer bater numa parede para sempre.
         self._genes = np.random.randn(self.num_genes) * 0.05
@@ -64,6 +63,11 @@ class AgenteEvo(Agente):
             return 
         self._genes = np.array(novos_genes)
         self._decodificar_genes()
+
+    def clone(self):
+        new_agent = self.__class__() # Creates an instance of the subclass
+        new_agent.genes = self.genes.copy()
+        return new_agent
 
     def _formar_estado(self, obs):
         raise NotImplementedError

@@ -18,3 +18,6 @@ class Agente:
     def reset_episodio(self):
         self.recompensa_total = 0
         self.ultima_observacao = None
+
+    def clone(self):
+        raise NotImplementedError

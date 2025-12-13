@@ -9,6 +9,8 @@ class Ambiente(ABC):
         self._posicoes_agentes = {}
         self._passos_parado = {}
         self.terminou = False
+        self.visualizacao_ativa = False
+        self.caminhos_otimos_visual = {}
 
     def atualizacao(self):
         pass

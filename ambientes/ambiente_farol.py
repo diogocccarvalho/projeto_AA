@@ -1,28 +1,30 @@
 import random
+import numpy as np
 from collections import deque
 from ambientes.ambiente import Ambiente
+from agentes.agenteFarolEvo import AgenteFarolEvo
 
 class AmbienteFarol(Ambiente):
-    RECOMPENSA_FAROL = 1000
+    RECOMPENSA_FAROL = 100
     
     # NOVAS PENALIDADES (Balanceadas para evitar "Cabeçadas na Parede")
     PENALIDADE_OBSTACULO = -5.0   # Pior de todos
     PENALIDADE_COLISAO = -2.0     # Mau (Bater nos limites)
-    PENALIDADE_REPETICAO = -1.5   # Mau, mas melhor que bater (Permite sair de dead-ends)
+    PENALIDADE_REPETICAO = -2.5   # Mau, mas melhor que bater (Permite sair de dead-ends)
     
-    CUSTO_MOVIMENTO = -0.01
+    CUSTO_MOVIMENTO = -0.2
     PENALIDADE_PARADO = -1.0
     
     # Aumentar memória para evitar loops em mapas grandes
     TAMANHO_HISTORICO = 40       
     
-    RECOMPENSA_APROXIMACAO_FATOR = 1 
+    RECOMPENSA_APROXIMACAO_FATOR = 2
     PENALIDADE_TEMPO_FATOR = 0.01    
-    MIN_DIST_INICIAL = 5       
 
     def __init__(self, largura=20, altura=20, num_obstaculos=20):
         super().__init__(largura, altura)
         self.num_obstaculos_inicial = num_obstaculos
+        self.min_dist_inicial = (self.largura + self.altura) // 4  # Distância mínima dinâmica
         self.pos_farol = None
         self.obstaculos = set()
         self._pos_iniciais_agentes = []
@@ -33,6 +35,7 @@ class AmbienteFarol(Ambiente):
     def reconfigurar(self, **kwargs):
         self.largura = kwargs.get('largura', self.largura)
         self.altura = kwargs.get('altura', self.altura)
+        self.min_dist_inicial = (self.largura + self.altura) // 4  # Recalcular com novos L/A
         self.num_obstaculos_inicial = kwargs.get('num_obstaculos', self.num_obstaculos_inicial)
         self.reset()
 
@@ -52,25 +55,35 @@ class AmbienteFarol(Ambiente):
             pos_ocupadas.add(pos)
         return elementos
 
-    def _tem_caminho(self, inicio, fim):
-        if inicio == fim: return True
+    def _encontrar_caminho(self, inicio, fim):
+        if inicio == fim:
+            return [inicio]
         fronteira = deque([inicio])
-        visitados = {inicio}
+        visitados = {inicio: None}  # Usar um dicionário para guardar o "pai" de cada nó
         while fronteira:
-            (x, y) = fronteira.popleft()
-            if (x, y) == fim: return True
+            pos_atual = fronteira.popleft()
+            if pos_atual == fim:
+                # Reconstruir o caminho a partir do "fim"
+                caminho = []
+                while pos_atual is not None:
+                    caminho.append(pos_atual)
+                    pos_atual = visitados[pos_atual]
+                return caminho[::-1]  # Inverter para ter do início para o fim
+
+            (x, y) = pos_atual
             for dx, dy in [(0, -1), (0, 1), (1, 0), (-1, 0)]:
                 nx, ny = x + dx, y + dy
                 pos_vizinho = (nx, ny)
                 pos_valida = 0 <= nx < self.largura and 0 <= ny < self.altura
                 if pos_valida and pos_vizinho not in self.obstaculos and pos_vizinho not in visitados:
-                    visitados.add(pos_vizinho)
+                    visitados[pos_vizinho] = pos_atual # Guardar o "pai"
                     fronteira.append(pos_vizinho)
-        return False
+        return None # Não há caminho
 
     def reset(self):
         self.terminou = False
         self.passos_no_episodio = 0
+        self.caminhos_otimos_visual.clear()
         for agente in self._posicoes_agentes:
             self._passos_parado[agente] = 0
         num_agentes = len(self._posicoes_agentes)
@@ -83,7 +96,7 @@ class AmbienteFarol(Ambiente):
             perto_demais = False
             for pos_agente in self._pos_iniciais_agentes:
                 dist = abs(pos_agente[0] - self.pos_farol[0]) + abs(pos_agente[1] - self.pos_farol[1])
-                if dist < self.MIN_DIST_INICIAL:
+                if dist < self.min_dist_inicial:
                     perto_demais = True
                     break
             if perto_demais: continue
@@ -92,7 +105,9 @@ class AmbienteFarol(Ambiente):
             num_obstaculos = random.randint(self.num_obstaculos_inicial // 2, int(self.num_obstaculos_inicial * 1.5))
             self.obstaculos = self._gerar_elementos(num_obstaculos, pos_a_evitar)
             
-            if num_agentes == 0 or all(self._tem_caminho(pos_inicial, self.pos_farol) for pos_inicial in self._pos_iniciais_agentes):
+            caminhos_encontrados = all(self._encontrar_caminho(pos_agente, self.pos_farol) is not None for pos_agente in self._pos_iniciais_agentes)
+            
+            if caminhos_encontrados:
                 break
         
         for i, agente in enumerate(self._posicoes_agentes.keys()):
@@ -113,21 +128,22 @@ class AmbienteFarol(Ambiente):
         ax, ay = self._posicoes_agentes[agente]
         fx, fy = self.pos_farol
 
+        # Calcula o vetor de direção para o farol e normaliza-o para ter valores -1, 0 ou 1.
         dx = fx - ax
         dy = fy - ay
-        dist_discreta = ((dx > 0) - (dx < 0), (dy > 0) - (dy < 0))
+        direcao_alvo = tuple(np.sign([dx, dy]))
 
         sensores = {}
         dirs = {"Norte": (0, -1), "Sul": (0, 1), "Este": (1, 0), "Oeste": (-1, 0), "Noroeste": (-1, -1), "Sudoeste": (-1, 1), "Nordeste": (1, -1), "Sudeste": (1, 1)}
-        for nome_dir, (dx, dy) in dirs.items():
-            nx, ny = ax + dx, ay + dy
+        for nome_dir, (dx_sensor, dy_sensor) in dirs.items():
+            nx, ny = ax + dx_sensor, ay + dy_sensor
             if not (0 <= nx < self.largura and 0 <= ny < self.altura) or (nx, ny) in self.obstaculos:
                 sensores[nome_dir] = 1
             else:
                 sensores[nome_dir] = 0
 
         return {
-            "distancia_discreta": dist_discreta,
+            "direcao_alvo": direcao_alvo,
             "sensores": sensores
         }
 
@@ -157,10 +173,18 @@ class AmbienteFarol(Ambiente):
             self.terminou = True
             return self.RECOMPENSA_FAROL
         
+        # --- REWARD SHAPING: Recompensa por aproximação ---
         dist_depois = abs(x - fx) + abs(y - fy)
-        recompensa_dist = (dist_antes - dist_depois) * self.RECOMPENSA_APROXIMACAO_FATOR
-        recompensa_final = self.CUSTO_MOVIMENTO + recompensa_dist
+        progresso = dist_antes - dist_depois
+        recompensa_final = (progresso * self.RECOMPENSA_APROXIMACAO_FATOR) + self.CUSTO_MOVIMENTO
+        # --- FIM ---
 
+        # Se a visualização estiver ativa, calcular e guardar o caminho ótimo para o agente atual
+        if self.visualizacao_ativa:
+            pos_agente = self._posicoes_agentes[agente]
+            if pos_agente:
+                self.caminhos_otimos_visual[agente] = self._encontrar_caminho(pos_agente, self.pos_farol)
+        
         if (x, y) in self._historico_posicoes.get(agente, []):
             recompensa_final += self.PENALIDADE_REPETICAO
         

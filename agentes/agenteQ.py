@@ -1,5 +1,6 @@
 from agentes.agente import Agente
 import random
+import copy
 
 class AgenteQ(Agente):
 
@@ -8,13 +9,11 @@ class AgenteQ(Agente):
 
         #parametros
         self.q_table = {}
-        self.visited_states = {}
         self.alpha = alpha              # Taxa de aprendizagem (learning rate)
         self.gamma = gamma              # Fator de desconto (discount factor)
         self.epsilon = epsilon          # Taxa de exploração inicial (exploration rate)
         self.epsilon_min = epsilon_min      # Taxa de exploração mínima
         self.epsilon_decay = epsilon_decay  # Decaimento da taxa de exploração
-        self.exploration_beta = exploration_beta # Fator de exploração
 
 
         self.estado_anterior = None
@@ -30,12 +29,6 @@ class AgenteQ(Agente):
         return self.q_table.get((estado, acao), 0.0)
 
     def _atualizar_q_table(self, estado_atual, recompensa, accoes_validas):
-        # Incrementar contagem de visitas ao estado anterior
-        self.visited_states[self.estado_anterior] = self.visited_states.get(self.estado_anterior, 0) + 1
-
-        # Calcular bônus de exploração
-        exploration_bonus = self.exploration_beta / (self.visited_states.get(self.estado_anterior, 1) ** 0.5)
-
         q_antigo = self.obter_q(self.estado_anterior, self.acao_anterior)
         
         #estimar melhor ação
@@ -43,7 +36,7 @@ class AgenteQ(Agente):
         max_q_futuro = max(q_valores_futuros) if q_valores_futuros else 0.0
 
         #bellman
-        q_novo = q_antigo + self.alpha * (recompensa + exploration_bonus + self.gamma * max_q_futuro - q_antigo)
+        q_novo = q_antigo + self.alpha * (recompensa + self.gamma * max_q_futuro - q_antigo)
         self.q_table[(self.estado_anterior, self.acao_anterior)] = q_novo
 
     def _get_accoes_validas(self, estado):
@@ -68,26 +61,6 @@ class AgenteQ(Agente):
     def age(self):
         estado_atual = self._formar_estado(self.ultima_observacao)
         
-        # --- LOOP BREAKER (Correção para a Demo) ---
-        # Se não estamos a aprender (Modo Demo), verificamos se estamos presos
-        if not self.learning_mode:
-            # Hash simples do estado para detetar repetição imediata
-            # Usamos um histórico local curto apenas para detetar loops
-            if not hasattr(self, '_demo_history'): self._demo_history = []
-            
-            self._demo_history.append(estado_atual)
-            if len(self._demo_history) > 10: self._demo_history.pop(0)
-            
-            # Se o mesmo estado aparece 3 vezes nos últimos 10 passos -> PÂNICO
-            if self._demo_history.count(estado_atual) >= 3:
-                # Força uma ação aleatória para sair do loop
-                acao = random.choice(self._get_accoes_validas(estado_atual))
-                self.estado_anterior = estado_atual
-                self.acao_anterior = acao
-                self._demo_history = [] 
-                return acao
-        # -------------------------------------------
-
         if self.learning_mode and random.random() < self.epsilon:
             acao = random.choice(self._get_accoes_validas(estado_atual))
         else:
@@ -117,3 +90,8 @@ class AgenteQ(Agente):
         #reduzir exploração
         if self.learning_mode and self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
+
+    def clone(self):
+        new_agent = self.__class__()
+        new_agent.q_table = copy.deepcopy(self.q_table)
+        return new_agent

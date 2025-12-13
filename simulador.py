@@ -93,6 +93,7 @@ class Simulador:
             
     def executa_episodio(self, visualizador=None, delay=0.0, max_passos=1000):
         self._preparar_episodio()
+        self._ambiente.visualizacao_ativa = (visualizador is not None)
         executando = True
         
         while executando and self._passo_atual < max_passos:
@@ -116,7 +117,7 @@ class Simulador:
         return scores
 
     @staticmethod
-    def treinar_q(ClasseAmbiente, ClasseAgente, env_params, num_agentes, num_episodios=1000, guardar_em=None):
+    def treinar_q(ClasseAmbiente, ClasseAgente, env_params, num_agentes, num_episodios=1000, guardar_em=None, parar_no_pico=False, score_alvo=None, pico_eps=100, pico_percentagem=0.95):
         print(f"--- Treino Q-Learning ({num_episodios} ep) ---")
 
         agentes = [ClasseAgente() for _ in range(num_agentes)]
@@ -134,7 +135,6 @@ class Simulador:
             sim.adicionar_agente(ag, verbose=False)
 
         for i in range(num_episodios):
-            # Reconfiguração dinâmica
             largura = random.randint(*env_params['largura'])
             altura = random.randint(*env_params['altura'])
             env_kwargs = {'largura': largura, 'altura': altura}
@@ -160,7 +160,14 @@ class Simulador:
 
             if (i+1) % 100 == 0:
                 media_recente = np.mean(historico_max_scores[-100:])
-                print(f"Ep {i+1}: Média Score (Top) = {media_recente:.2f}")
+                print(f"Ep {i+1}: Média Score (Top 100) = {media_recente:.2f}, Epsilon = {agentes[0].epsilon:.4f}")
+
+                if parar_no_pico and score_alvo is not None and len(historico_max_scores) >= pico_eps:
+                    scores_recentes = historico_max_scores[-pico_eps:]
+                    limite_score = score_alvo * pico_percentagem
+                    if min(scores_recentes) >= limite_score:
+                        print(f"\n!! PARAGEM ANTECIPADA: Performance estável acima de {limite_score:.2f} por {pico_eps} episódios.")
+                        break
                 
                 if media_recente > melhor_media_vencedores:
                     melhor_media_vencedores = media_recente
@@ -170,20 +177,23 @@ class Simulador:
         if guardar_em and melhor_agente:
             Simulador.guardar_agente(melhor_agente, guardar_em)
         
-        # Plot com janela grande de suavização para Q-Learning (muito ruído)
-        Simulador._plotar_progresso(historico_max_scores, guardar_em, "Q-Learning", window_size=100)
+        Simulador._plotar_progresso(historico_max_scores, guardar_em, "Q-Learning", score_alvo=score_alvo, window_size=100)
         return historico_max_scores
 
     @staticmethod
-    def treinar_genetico(ClasseAmbiente, ClasseAgente, env_params, pop_size, num_geracoes=50, guardar_em=None):
+    def treinar_genetico(ClasseAmbiente, ClasseAgente, env_params, pop_size, num_geracoes=50, guardar_em=None, parar_no_pico=False, score_alvo=None, pico_gens=10, pico_percentagem=0.95):
         print(f"--- Treino Genético ({num_geracoes} ger) ---")
 
         populacao = [ClasseAgente() for _ in range(pop_size)]
+        
         melhor_global = None
         best_score_global = -float('inf')
 
         historico_melhor_score = []
+        scores = [] # Manter scores da última geração para o save
 
+        # NOTA: ProcessPoolExecutor é a escolha correta aqui, mesmo para PyPy,
+        # pois a simulação é CPU-bound e segura o GIL, impedindo paralelismo em threads.
         with concurrent.futures.ProcessPoolExecutor() as executor:
             for g in range(num_geracoes):
                 args_list = []
@@ -209,6 +219,14 @@ class Simulador:
                 historico_melhor_score.append(max_s)
 
                 print(f"Ger {g+1}: Melhor={max_s:.1f}, Média={avg_s:.1f}")
+
+                # --- LÓGICA DE EARLY STOPPING ---
+                if parar_no_pico and score_alvo is not None and len(historico_melhor_score) >= pico_gens:
+                    scores_recentes = historico_melhor_score[-pico_gens:]
+                    limite_score = score_alvo * pico_percentagem
+                    if min(scores_recentes) >= limite_score:
+                        print(f"\n!! PARAGEM ANTECIPADA: Performance estável acima de {limite_score:.2f} por {pico_gens} gerações.")
+                        break
                 
                 if max_s > best_score_global:
                     best_score_global = max_s
@@ -216,14 +234,15 @@ class Simulador:
                         idx_best = scores.index(max_s)
                         melhor_global = copy.deepcopy(populacao[idx_best])
 
-                populacao = Simulador._reproduzir_populacao(populacao, scores, pop_size)
+                populacao = Simulador._reproduzir_populacao(populacao, scores, pop_size, mutation_rate=0.05)
 
         if guardar_em and melhor_global:
             Simulador.guardar_agente(melhor_global, guardar_em)
         
         # Plot com janela menor para Genético (menos dados, menos ruído)
-        Simulador._plotar_progresso(historico_melhor_score, guardar_em, "Genético", window_size=20)
-        return best_score_global
+        Simulador._plotar_progresso(historico_melhor_score, guardar_em, "Genético", score_alvo=score_alvo, window_size=20)
+        # Retorna o melhor score atingido durante todo o treino para referência
+        return max(historico_melhor_score) if historico_melhor_score else -float('inf')
 
     @staticmethod
     def _reproduzir_populacao(populacao, scores, pop_size, elite_pct=0.1, mutation_rate=0.05):
@@ -243,8 +262,12 @@ class Simulador:
             genes_p1 = pai1.genes
             genes_p2 = pai2.genes
             
-            genes_filho = (genes_p1 + genes_p2) / 2.0
+            # --- MELHORIA: Uniform Crossover para mais diversidade ---
+            # Em vez de média, mistura os genes dos pais
+            mask = np.random.rand(len(genes_p1)) > 0.5
+            genes_filho = np.where(mask, genes_p1, genes_p2)
             
+            # Mutação (com a mesma probabilidade de antes)
             if random.random() < 0.8:
                 noise = np.random.randn(len(genes_filho)) * mutation_rate
                 genes_filho += noise
@@ -267,49 +290,57 @@ class Simulador:
         return populacao[best_idx]
 
     @staticmethod
-    def _plotar_progresso(dados_principal, filename, titulo, extra_data=None, window_size=50):
+    def _plotar_progresso(dados_principal, filename, titulo, score_alvo=None, window_size=50):
         if not dados_principal: return
         
-        # Converter para numpy e calcular média móvel (suavização)
+        plt.style.use('seaborn-v0_8-darkgrid')
+        fig, ax = plt.subplots(figsize=(14, 8))
+        
+        # --- Dados Brutos (com transparência) ---
+        ax.scatter(
+            range(len(dados_principal)), 
+            dados_principal, 
+            alpha=0.15, 
+            color='lightblue', 
+            s=15,
+            label='Score de Episódio Individual'
+        )
+
+        # --- Média Móvel (Suavização) ---
         data = np.array(dados_principal)
         if len(data) > window_size:
             kernel = np.ones(window_size) / window_size
             data_smoothed = np.convolve(data, kernel, mode='valid')
-            # Ajustar eixo X para corresponder à convolução
-            x_axis = np.arange(window_size - 1, len(data))
-        else:
-            data_smoothed = data
-            x_axis = np.arange(len(data))
+            x_axis_smoothed = np.arange(window_size - 1, len(data))
+            ax.plot(x_axis_smoothed, data_smoothed, color='#0033A0', linewidth=2.5, label=f'Média Móvel (janela={window_size})')
+        
+        # --- Linha de Score Alvo ---
+        if score_alvo is not None:
+            ax.axhline(y=score_alvo, color='#D40000', linestyle='--', linewidth=2, label=f'Score Alvo ({score_alvo:.0f})')
             
-        # Calcular Derivada (Tendência)
-        derivada = np.gradient(data_smoothed)
+        # --- Anotação de Peak Score ---
+        if dados_principal:
+            peak_score = max(dados_principal)
+            peak_episode = np.argmax(dados_principal)
+            ax.annotate(
+                f'Pico: {peak_score:.0f}',
+                xy=(peak_episode, peak_score),
+                xytext=(peak_episode, peak_score + (max(dados_principal) - min(dados_principal)) * 0.1),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=8),
+                ha='center'
+            )
+
+        # --- Títulos e Legendas ---
+        ax.set_title(f'Progresso do Treino: {titulo}', fontsize=18, fontweight='bold', pad=20)
+        ax.set_xlabel('Episódio / Geração', fontsize=12)
+        ax.set_ylabel('Score Máximo', fontsize=12)
+        ax.legend(fontsize=10)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5)
         
-        fig, ax1 = plt.subplots(figsize=(12, 7))
-        
-        # Eixo 1: Score Suavizado
-        color = 'tab:blue'
-        ax1.set_xlabel('Episódio / Geração')
-        ax1.set_ylabel('Score (Média Móvel)', color=color, fontweight='bold')
-        ax1.plot(x_axis, data_smoothed, color=color, linewidth=2, label='Score (Suavizado)')
-        ax1.tick_params(axis='y', labelcolor=color)
-        ax1.grid(True, linestyle='--', alpha=0.7)
-        
-        # Eixo 2: Derivada (Taxa de Aprendizagem)
-        ax2 = ax1.twinx()
-        color = 'tab:orange'
-        ax2.set_ylabel('Derivada (Tendência de Aprendizagem)', color=color, fontweight='bold')
-        ax2.plot(x_axis, derivada, color=color, linestyle='--', linewidth=1.5, label='Derivada', alpha=0.8)
-        ax2.tick_params(axis='y', labelcolor=color)
-        
-        # Linha de referência zero para a derivada
-        ax2.axhline(0, color='grey', linewidth=1, linestyle='-')
-        
-        # Título e Legendas
-        plt.title(f'Evolução do Treino: {titulo}\n(Janela de Suavização: {window_size})', fontsize=14)
         fig.tight_layout()
         
         if filename:
             nome_grafico = filename.replace('.pkl', '_progress.png')
-            plt.savefig(nome_grafico)
+            plt.savefig(nome_grafico, dpi=120) # Aumentar DPI para mais qualidade
             print(f"Gráfico melhorado guardado: {nome_grafico}")
         plt.close(fig)

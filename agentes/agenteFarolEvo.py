@@ -14,6 +14,6 @@ class AgenteFarolEvo(AgenteEvo):
         if obs is None:
             return np.zeros(10)
             
-        dist = np.array(obs['distancia_discreta'])
+        dist = np.array(obs['direcao_alvo'])
         sensores = np.array(list(obs['sensores'].values()))
         return np.concatenate([dist, sensores])
