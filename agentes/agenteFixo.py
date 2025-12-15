@@ -11,25 +11,31 @@ class AgenteFixo(Agente):
         if obs is None:
             return random.choice(self.accoes)
 
-        # Lógica para o ambiente de Recolecao
+        dx, dy = 0, 0
+
+        # --- Lógica para Ambiente Recolecao ---
         if 'carregando' in obs:
             if obs['carregando']:
-                # Se estiver carregando, vai para o ninho
-                if obs['dist_ninho'] == 0:
+                # Se carregado, vai ao ninho
+                if obs['dir_ninho'] == (0, 0): # Chegou
                     return "Depositar"
                 dx, dy = obs['dir_ninho']
             else:
-                # Se não estiver carregando, vai para o recurso mais próximo
-                if obs['dist_recurso'] == 0:
+                # Se vazio, vai ao recurso
+                if obs['dir_recurso'] == (0, 0): # Chegou (ou não há recursos)
                     return "Recolher"
                 dx, dy = obs['dir_recurso']
-        # Lógica para o ambiente do Farol
-        elif 'distancia_discreta' in obs:
-            dx, dy = obs['distancia_discreta']
+        
+        # --- Lógica para Ambiente Farol ---
+        elif 'direcao_alvo' in obs:
+            dx, dy = obs['direcao_alvo']
+        
         else:
+            # Fallback
             return random.choice(["Norte", "Sul", "Este", "Oeste"])
 
-        # Mapear direção para ação
+        # Mapear direção (dx, dy) para ação
+        # (dx, dy) são valores normalizados (-1, 0, 1)
         if dx == 1:
             return "Este"
         elif dx == -1:
@@ -39,12 +45,11 @@ class AgenteFixo(Agente):
         elif dy == -1:
             return "Norte"
         
-        # Se estiver em cima do objetivo (dist (0,0)) ou se houver um obstáculo, escolhe uma ação aleatória
+        # Se dx=0, dy=0 e não retornou antes, movimento aleatório para desbloquear
         return random.choice(["Norte", "Sul", "Este", "Oeste"])
 
     def obter_accao(self, estado, accoes_validas):
-        # Este agente não usa Q-learning, então apenas chama age()
-        return self.age(estado)
+        return self.age()
 
-    def treinar(self, estado_anterior, accao, recompensa, estado_novo):
+    def treinar(self, *args):
         pass

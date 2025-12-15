@@ -19,8 +19,7 @@ class AgenteEvo(Agente):
         
         self.num_genes = self.s1 + self.sb1 + self.s2 + self.sb2 + self.s3 + self.sb3
 
-        # Usamos uma variância muito baixa (0.05) para evitar saturação.
-        # Isto impede que o agente nasça a querer bater numa parede para sempre.
+        # Usamos uma variância muito baixa (0.05) para evitar saturação inicial.
         self._genes = np.random.randn(self.num_genes) * 0.05
         
         self._decodificar_genes()
@@ -58,15 +57,20 @@ class AgenteEvo(Agente):
 
     @genes.setter
     def genes(self, novos_genes):
-        # FIX: Raise Error instead of silent failure
+        # --- FIX: CRITICAL SAFETY CHECK ---
+        # Impede que o agente carregue um cérebro incompatível e fique "estúpido" sem avisar
         if len(novos_genes) != self.num_genes:
-            raise ValueError(f"CRITICAL: Gene size mismatch! Brain has {len(novos_genes)}, Code expects {self.num_genes}. Retrain the agent or check architecture.")
+            raise ValueError(
+                f"\n!!! ERRO CRÍTICO DE ARQUITETURA !!!\n"
+                f"O ficheiro .pkl tem {len(novos_genes)} genes, mas o código espera {self.num_genes}.\n"
+                f"SOLUÇÃO: Apague os ficheiros .pkl antigos e corra o treino novamente."
+            )
             
         self._genes = np.array(novos_genes)
         self._decodificar_genes()
 
     def clone(self):
-        new_agent = self.__class__() # Creates an instance of the subclass
+        new_agent = self.__class__() 
         new_agent.genes = self.genes.copy()
         return new_agent
 
