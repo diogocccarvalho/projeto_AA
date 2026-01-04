@@ -1,0 +1,82 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Relatório de Treino - Projeto AA</title>
+        <style>
+            body { 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background-color: #f4f4f4; 
+                margin: 0; 
+                padding: 20px; 
+                text-align: center; 
+            }
+            h1 { color: #2c3e50; margin-bottom: 20px; }
+            
+            /* GRID 2x2 */
+            .container { 
+                display: grid; 
+                grid-template-columns: 1fr 1fr; /* Duas colunas iguais */
+                gap: 20px; 
+                max-width: 1400px; 
+                margin: 0 auto; 
+            }
+            
+            .card { 
+                background: white; 
+                padding: 10px; 
+                border-radius: 8px; 
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+                transition: transform 0.2s; 
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .card:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+            
+            img { 
+                width: 100%; 
+                height: auto; 
+                border: 1px solid #eee; 
+                border-radius: 4px; 
+            }
+            
+            h3 { 
+                color: #555; 
+                margin: 10px 0 0 0; 
+                font-size: 1rem;
+            }
+            
+            .footer { margin-top: 30px; color: #95a5a6; font-size: 0.8em; }
+        </style>
+    </head>
+    <body>
+        <h1>Resultados do Treino dos Agentes</h1>
+        <div class="container">
+    
+            <div class="card">
+                <img src="file:///home/diogo/Documents/uni/AA/projeto_AA/agente_farol_evo_progress.png" alt="agente_farol_evo_progress.png">
+                <h3>agente_farol_evo_progress.png</h3>
+            </div>
+        
+            <div class="card">
+                <img src="file:///home/diogo/Documents/uni/AA/projeto_AA/agente_farol_q_progress.png" alt="agente_farol_q_progress.png">
+                <h3>agente_farol_q_progress.png</h3>
+            </div>
+        
+            <div class="card">
+                <img src="file:///home/diogo/Documents/uni/AA/projeto_AA/agente_recolecao_evo_progress.png" alt="agente_recolecao_evo_progress.png">
+                <h3>agente_recolecao_evo_progress.png</h3>
+            </div>
+        
+            <div class="card">
+                <img src="file:///home/diogo/Documents/uni/AA/projeto_AA/agente_recolecao_q_progress.png" alt="agente_recolecao_q_progress.png">
+                <h3>agente_recolecao_q_progress.png</h3>
+            </div>
+        
+        </div>
+        <div class="footer">Relatório gerado automaticamente pelo Simulador.</div>
+    </body>
+    </html>
+    

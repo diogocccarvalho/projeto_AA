@@ -9,8 +9,8 @@ class AmbienteFarol(Ambiente):
     
     # NOVAS PENALIDADES (Balanceadas para evitar "Cabeçadas na Parede")
     PENALIDADE_OBSTACULO = -5.0   # Pior de todos
-    PENALIDADE_COLISAO = -2.0     # Mau (Bater nos limites)
-    PENALIDADE_REPETICAO = -2.5   # Mau, mas melhor que bater (Permite sair de dead-ends)
+    PENALIDADE_COLISAO = -2.0     # Mau (Bater nos limites/Agentes)
+    PENALIDADE_REPETICAO = -2.5   
     
     CUSTO_MOVIMENTO = -0.2
     PENALIDADE_PARADO = -1.0
@@ -24,7 +24,7 @@ class AmbienteFarol(Ambiente):
     def __init__(self, largura=20, altura=20, num_obstaculos=20):
         super().__init__(largura, altura)
         self.num_obstaculos_inicial = num_obstaculos
-        self.min_dist_inicial = (self.largura + self.altura) // 4  # Distância mínima dinâmica
+        self.min_dist_inicial = (self.largura + self.altura) // 4
         self.pos_farol = None
         self.obstaculos = set()
         self._pos_iniciais_agentes = []
@@ -35,7 +35,7 @@ class AmbienteFarol(Ambiente):
     def reconfigurar(self, **kwargs):
         self.largura = kwargs.get('largura', self.largura)
         self.altura = kwargs.get('altura', self.altura)
-        self.min_dist_inicial = (self.largura + self.altura) // 4  # Recalcular com novos L/A
+        self.min_dist_inicial = (self.largura + self.altura) // 4
         self.num_obstaculos_inicial = kwargs.get('num_obstaculos', self.num_obstaculos_inicial)
         self.reset()
 
@@ -59,16 +59,15 @@ class AmbienteFarol(Ambiente):
         if inicio == fim:
             return [inicio]
         fronteira = deque([inicio])
-        visitados = {inicio: None}  # Usar um dicionário para guardar o "pai" de cada nó
+        visitados = {inicio: None}
         while fronteira:
             pos_atual = fronteira.popleft()
             if pos_atual == fim:
-                # Reconstruir o caminho a partir do "fim"
                 caminho = []
                 while pos_atual is not None:
                     caminho.append(pos_atual)
                     pos_atual = visitados[pos_atual]
-                return caminho[::-1]  # Inverter para ter do início para o fim
+                return caminho[::-1]
 
             (x, y) = pos_atual
             for dx, dy in [(0, -1), (0, 1), (1, 0), (-1, 0)]:
@@ -76,9 +75,9 @@ class AmbienteFarol(Ambiente):
                 pos_vizinho = (nx, ny)
                 pos_valida = 0 <= nx < self.largura and 0 <= ny < self.altura
                 if pos_valida and pos_vizinho not in self.obstaculos and pos_vizinho not in visitados:
-                    visitados[pos_vizinho] = pos_atual # Guardar o "pai"
+                    visitados[pos_vizinho] = pos_atual
                     fronteira.append(pos_vizinho)
-        return None # Não há caminho
+        return None
 
     def reset(self):
         self.terminou = False
@@ -128,16 +127,25 @@ class AmbienteFarol(Ambiente):
         ax, ay = self._posicoes_agentes[agente]
         fx, fy = self.pos_farol
 
-        # Calcula o vetor de direção para o farol e normaliza-o para ter valores -1, 0 ou 1.
         dx = fx - ax
         dy = fy - ay
         direcao_alvo = tuple(np.sign([dx, dy]))
 
         sensores = {}
+        
+        # --- FIX: VISÃO DE OUTROS AGENTES ---
+        todas_posicoes_ocupadas = self.obstaculos.copy()
+        for ag_other, pos_other in self._posicoes_agentes.items():
+            if ag_other != agente:
+                todas_posicoes_ocupadas.add(pos_other)
+        # ------------------------------------
+
         dirs = {"Norte": (0, -1), "Sul": (0, 1), "Este": (1, 0), "Oeste": (-1, 0), "Noroeste": (-1, -1), "Sudoeste": (-1, 1), "Nordeste": (1, -1), "Sudeste": (1, 1)}
         for nome_dir, (dx_sensor, dy_sensor) in dirs.items():
             nx, ny = ax + dx_sensor, ay + dy_sensor
-            if not (0 <= nx < self.largura and 0 <= ny < self.altura) or (nx, ny) in self.obstaculos:
+            
+            # Bloqueado se for parede, obstáculo estático OU outro agente
+            if not (0 <= nx < self.largura and 0 <= ny < self.altura) or (nx, ny) in todas_posicoes_ocupadas:
                 sensores[nome_dir] = 1
             else:
                 sensores[nome_dir] = 0
@@ -149,6 +157,8 @@ class AmbienteFarol(Ambiente):
 
     def agir(self, agente, accao):
         if self.terminou: return 0
+        
+        is_evo = isinstance(agente, AgenteFarolEvo)
 
         self.passos_no_episodio += 1
         x, y = self._posicoes_agentes[agente]
@@ -162,30 +172,32 @@ class AmbienteFarol(Ambiente):
 
         sucesso, _ = self._mover_agente(agente, (nx, ny))
         
-        # CORREÇÃO: Usar penalidades explícitas
         if not sucesso:
             if (nx, ny) in self.obstaculos:
                 return self.PENALIDADE_OBSTACULO
-            return self.PENALIDADE_COLISAO # Paredes
+            return self.PENALIDADE_COLISAO # Bateu na parede ou noutro agente
 
         x, y = self._posicoes_agentes[agente]
         if (x, y) == self.pos_farol:
             self.terminou = True
             return self.RECOMPENSA_FAROL
         
-        # --- REWARD SHAPING: Recompensa por aproximação ---
-        dist_depois = abs(x - fx) + abs(y - fy)
-        progresso = dist_antes - dist_depois
-        recompensa_final = (progresso * self.RECOMPENSA_APROXIMACAO_FATOR) + self.CUSTO_MOVIMENTO
-        # --- FIM ---
+        recompensa_final = self.CUSTO_MOVIMENTO
 
-        # Se a visualização estiver ativa, calcular e guardar o caminho ótimo para o agente atual
+        # --- REWARD SHAPING (Apenas Q-Learning) ---
+        if not is_evo:
+            dist_depois = abs(x - fx) + abs(y - fy)
+            progresso = dist_antes - dist_depois
+            recompensa_final += (progresso * self.RECOMPENSA_APROXIMACAO_FATOR)
+        # ------------------------------------------
+
         if self.visualizacao_ativa:
             pos_agente = self._posicoes_agentes[agente]
             if pos_agente:
                 self.caminhos_otimos_visual[agente] = self._encontrar_caminho(pos_agente, self.pos_farol)
         
-        if (x, y) in self._historico_posicoes.get(agente, []):
+        # Penalidade de repetição (Q-Learning apenas)
+        if not is_evo and (x, y) in self._historico_posicoes.get(agente, []):
             recompensa_final += self.PENALIDADE_REPETICAO
         
         if agente in self._historico_posicoes:

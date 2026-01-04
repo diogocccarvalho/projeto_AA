@@ -6,7 +6,7 @@ from agentes.agenteRecolecaoEvo import AgenteRecolecaoEvo
 
 class AmbienteRecolecao(Ambiente):
     # AJUSTE DE RECOMPENSAS PARA EVITAR LOOPING E CLARIFICAR OBJETIVO EVO
-    RECOMPENSA_DEPOSITO = 100      # Aumentado para ser o prémio máximo claro
+    RECOMPENSA_DEPOSITO = 100      
     RECOMPENSA_RECOLHA = 20       
     
     PENALIDADE_ACAO_INVALIDA = -5.0
@@ -66,16 +66,15 @@ class AmbienteRecolecao(Ambiente):
         if inicio == fim:
             return [inicio]
         fronteira = deque([inicio])
-        visitados = {inicio: None}  # Usar um dicionário para guardar o "pai" de cada nó
+        visitados = {inicio: None}
         while fronteira:
             pos_atual = fronteira.popleft()
             if pos_atual == fim:
-                # Reconstruir o caminho a partir do "fim"
                 caminho = []
                 while pos_atual is not None:
                     caminho.append(pos_atual)
                     pos_atual = visitados[pos_atual]
-                return caminho[::-1]  # Inverter para ter do início para o fim
+                return caminho[::-1]
 
             (x, y) = pos_atual
             for dx, dy in [(0, -1), (0, 1), (1, 0), (-1, 0)]:
@@ -83,9 +82,9 @@ class AmbienteRecolecao(Ambiente):
                 pos_vizinho = (nx, ny)
                 pos_valida = 0 <= nx < self.largura and 0 <= ny < self.altura
                 if pos_valida and pos_vizinho not in self.obstaculos and pos_vizinho not in visitados:
-                    visitados[pos_vizinho] = pos_atual # Guardar o "pai"
+                    visitados[pos_vizinho] = pos_atual 
                     fronteira.append(pos_vizinho)
-        return None # Não há caminho
+        return None 
 
     def _gerar_novo_mapa(self):
         self.pos_ninho = self._gerar_pos_aleatoria()
@@ -145,13 +144,21 @@ class AmbienteRecolecao(Ambiente):
         else:
             dir_recurso = (0, 0)
 
+        # --- FIX: VISÃO DE OUTROS AGENTES ---
+        # Criar conjunto de todas as posições bloqueadas (Paredes + Outros Agentes)
+        todas_posicoes_ocupadas = self.obstaculos.copy()
+        for ag_other, pos_other in self._posicoes_agentes.items():
+            if ag_other != agente:
+                todas_posicoes_ocupadas.add(pos_other)
+        # ------------------------------------
+
         sensores = {}
         dirs_check = [("Norte",(0,-1)),("Sul",(0,1)),("Este",(1,0)),("Oeste",(-1,0)),("NE",(1,-1)),("SE",(1,1)),("SW",(-1,1)),("NW",(-1,-1))]
         for nome, (mx, my) in dirs_check:
             nx_sens, ny_sens = ax + mx, ay + my
             blocked = 1
             if 0 <= nx_sens < self.largura and 0 <= ny_sens < self.altura:
-                if (nx_sens, ny_sens) not in self.obstaculos:
+                if (nx_sens, ny_sens) not in todas_posicoes_ocupadas:
                     blocked = 0
             sensores[nome] = blocked
 
@@ -188,26 +195,29 @@ class AmbienteRecolecao(Ambiente):
             self._posicoes_agentes[agente] = (nx, ny)
             self._passos_parado[agente] = 0
 
-            # --- REWARD SHAPING (Aplicado a TODOS os agentes) ---
-            alvo = self.pos_ninho if carregando else self._encontrar_recurso_mais_proximo((ax, ay))
             reward = self.CUSTO_MOVIMENTO
-            if alvo:
-                dist_antes = abs(ax - alvo[0]) + abs(ay - alvo[1])
-                dist_depois = abs(nx - alvo[0]) + abs(ny - alvo[1])
-                progresso = dist_antes - dist_depois
-                reward += (progresso * self.RECOMPENSA_APROXIMACAO_FATOR)
-            # --- FIM REWARD SHAPING ---
 
-            # A penalidade de repetição é muito agressiva para o EVO, mantemos apenas para o Q-Learning
-            if not is_evo and (nx, ny) in self._historico_posicoes[agente]:
-                reward += self.PENALIDADE_REPETICAO
+            # --- REWARD SHAPING (Apenas para Q-Learning) ---
+            # Evo deve aprender via Objetivo Final (Sparce Rewards) para evitar vicios
+            if not is_evo:
+                alvo = self.pos_ninho if carregando else self._encontrar_recurso_mais_proximo((ax, ay))
+                if alvo:
+                    dist_antes = abs(ax - alvo[0]) + abs(ay - alvo[1])
+                    dist_depois = abs(nx - alvo[0]) + abs(ny - alvo[1])
+                    progresso = dist_antes - dist_depois
+                    reward += (progresso * self.RECOMPENSA_APROXIMACAO_FATOR)
                 
+                # Penalidade de repetição (Apenas Q-Learning)
+                if (nx, ny) in self._historico_posicoes[agente]:
+                    reward += self.PENALIDADE_REPETICAO
+            # ---------------------------------------------
+
             self._historico_posicoes[agente].append((nx, ny))
 
-            # --- LÓGICA DE VISUALIZAÇÃO DO CAMINHO ÓTIMO ---
-            if self.visualizacao_ativa and alvo:
-                self.caminhos_otimos_visual[agente] = self._encontrar_caminho((nx, ny), alvo)
-            # --- FIM ---
+            if self.visualizacao_ativa:
+                alvo = self.pos_ninho if carregando else self._encontrar_recurso_mais_proximo((nx, ny))
+                if alvo:
+                    self.caminhos_otimos_visual[agente] = self._encontrar_caminho((nx, ny), alvo)
             
             return reward
 

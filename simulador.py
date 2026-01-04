@@ -17,19 +17,32 @@ import matplotlib.pyplot as plt
 def _avaliar_individuo_wrapper(args):
     """
     Função helper para avaliar um indivíduo em paralelo.
+    Agora suporta avaliação de EQUIPAS (Multiple Agents).
     """
-    agent, env_config, ClasseAmbiente = args
+    agent, env_config, ClasseAmbiente, num_agents_per_team = args
     
     # Criar ambiente e simulador isolados para este processo
     ambiente = ClasseAmbiente(**env_config)
     sim = Simulador()
     sim.cria(ambiente)
+    
+    # --- TEAM SPAWNING LOGIC ---
+    # Adicionar o agente principal
     sim.adicionar_agente(agent, verbose=False)
+    
+    # Adicionar CLONES para formar a equipa
+    # Isto garante que o agente aprende a trabalhar com outros iguais a ele
+    for _ in range(num_agents_per_team - 1):
+        clone = agent.clone()
+        sim.adicionar_agente(clone, verbose=False)
     
     # Executa o episódio
     sim.executa_episodio(visualizador=None, delay=0, max_passos=1000)
     
-    return agent.recompensa_total
+    # Fitness = Média do score da equipa
+    # (Poderia ser o minimo para forçar cooperação total, mas média é mais estável)
+    total_score = sum(ag.recompensa_total for ag in sim._agentes)
+    return total_score / len(sim._agentes)
 
 class Simulador:
 
@@ -181,8 +194,8 @@ class Simulador:
         return historico_max_scores
 
     @staticmethod
-    def treinar_genetico(ClasseAmbiente, ClasseAgente, env_params, pop_size, num_geracoes=50, guardar_em=None, parar_no_pico=False, score_alvo=None, pico_gens=10, pico_percentagem=0.95):
-        print(f"--- Treino Genético ({num_geracoes} ger) ---")
+    def treinar_genetico(ClasseAmbiente, ClasseAgente, env_params, pop_size, num_geracoes=50, guardar_em=None, parar_no_pico=False, score_alvo=None, pico_gens=10, pico_percentagem=0.95, num_agents_per_eval=1):
+        print(f"--- Treino Genético ({num_geracoes} ger) [Agentes/Sim: {num_agents_per_eval}] ---")
 
         populacao = [ClasseAgente() for _ in range(pop_size)]
         
@@ -190,10 +203,8 @@ class Simulador:
         best_score_global = -float('inf')
 
         historico_melhor_score = []
-        scores = [] # Manter scores da última geração para o save
+        scores = [] 
 
-        # NOTA: ProcessPoolExecutor é a escolha correta aqui, mesmo para PyPy,
-        # pois a simulação é CPU-bound e segura o GIL, impedindo paralelismo em threads.
         with concurrent.futures.ProcessPoolExecutor() as executor:
             for g in range(num_geracoes):
                 args_list = []
@@ -209,7 +220,8 @@ class Simulador:
                         min_rec, max_rec = env_params['num_recursos']
                         env_kwargs['num_recursos'] = random.randint(min_rec, max_rec)
                     
-                    args_list.append((ind, env_kwargs, ClasseAmbiente))
+                    # Passar o numero de agentes para o wrapper
+                    args_list.append((ind, env_kwargs, ClasseAmbiente, num_agents_per_eval))
 
                 scores = list(executor.map(_avaliar_individuo_wrapper, args_list))
 
@@ -220,7 +232,6 @@ class Simulador:
 
                 print(f"Ger {g+1}: Melhor={max_s:.1f}, Média={avg_s:.1f}")
 
-                # --- LÓGICA DE EARLY STOPPING ---
                 if parar_no_pico and score_alvo is not None and len(historico_melhor_score) >= pico_gens:
                     scores_recentes = historico_melhor_score[-pico_gens:]
                     limite_score = score_alvo * pico_percentagem
@@ -239,9 +250,7 @@ class Simulador:
         if guardar_em and melhor_global:
             Simulador.guardar_agente(melhor_global, guardar_em)
         
-        # Plot com janela menor para Genético (menos dados, menos ruído)
         Simulador._plotar_progresso(historico_melhor_score, guardar_em, "Genético", score_alvo=score_alvo, window_size=20)
-        # Retorna o melhor score atingido durante todo o treino para referência
         return max(historico_melhor_score) if historico_melhor_score else -float('inf')
 
     @staticmethod
@@ -262,12 +271,9 @@ class Simulador:
             genes_p1 = pai1.genes
             genes_p2 = pai2.genes
             
-            # --- MELHORIA: Uniform Crossover para mais diversidade ---
-            # Em vez de média, mistura os genes dos pais
             mask = np.random.rand(len(genes_p1)) > 0.5
             genes_filho = np.where(mask, genes_p1, genes_p2)
             
-            # Mutação (com a mesma probabilidade de antes)
             if random.random() < 0.8:
                 noise = np.random.randn(len(genes_filho)) * mutation_rate
                 genes_filho += noise
@@ -296,7 +302,6 @@ class Simulador:
         plt.style.use('seaborn-v0_8-darkgrid')
         fig, ax = plt.subplots(figsize=(14, 8))
         
-        # --- Dados Brutos (com transparência) ---
         ax.scatter(
             range(len(dados_principal)), 
             dados_principal, 
@@ -306,7 +311,6 @@ class Simulador:
             label='Score de Episódio Individual'
         )
 
-        # --- Média Móvel (Suavização) ---
         data = np.array(dados_principal)
         if len(data) > window_size:
             kernel = np.ones(window_size) / window_size
@@ -314,11 +318,9 @@ class Simulador:
             x_axis_smoothed = np.arange(window_size - 1, len(data))
             ax.plot(x_axis_smoothed, data_smoothed, color='#0033A0', linewidth=2.5, label=f'Média Móvel (janela={window_size})')
         
-        # --- Linha de Score Alvo ---
         if score_alvo is not None:
             ax.axhline(y=score_alvo, color='#D40000', linestyle='--', linewidth=2, label=f'Score Alvo ({score_alvo:.0f})')
             
-        # --- Anotação de Peak Score ---
         if dados_principal:
             peak_score = max(dados_principal)
             peak_episode = np.argmax(dados_principal)
@@ -330,7 +332,6 @@ class Simulador:
                 ha='center'
             )
 
-        # --- Títulos e Legendas ---
         ax.set_title(f'Progresso do Treino: {titulo}', fontsize=18, fontweight='bold', pad=20)
         ax.set_xlabel('Episódio / Geração', fontsize=12)
         ax.set_ylabel('Score Máximo', fontsize=12)
@@ -341,6 +342,6 @@ class Simulador:
         
         if filename:
             nome_grafico = filename.replace('.pkl', '_progress.png')
-            plt.savefig(nome_grafico, dpi=120) # Aumentar DPI para mais qualidade
+            plt.savefig(nome_grafico, dpi=120)
             print(f"Gráfico melhorado guardado: {nome_grafico}")
         plt.close(fig)

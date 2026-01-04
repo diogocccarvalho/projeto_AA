@@ -171,9 +171,10 @@ def run_presentation():
 
 def treinar_farol_q():
     params = {'largura': (20, 80), 'altura': (20, 80), 'num_obstaculos': (25, 200)}
+    # FIX: Aumentar para 3 agentes para treinar com "tráfego"
     Simulador.treinar_q(
         ClasseAmbiente=AmbienteFarol, ClasseAgente=AgenteFarolQ,
-        env_params=params, num_agentes=1, num_episodios=20000, 
+        env_params=params, num_agentes=3, num_episodios=1000, 
         guardar_em="agente_farol_q.pkl",
         parar_no_pico=False, score_alvo=AmbienteFarol.RECOMPENSA_FAROL, pico_eps=200
     )
@@ -182,9 +183,10 @@ def treinar_farol_evo():
     params = {'largura': (20, 80), 'altura': (20, 80), 'num_obstaculos': (25, 200)}
     Simulador.treinar_genetico(
         ClasseAmbiente=AmbienteFarol, ClasseAgente=AgenteFarolEvo, 
-        env_params=params, pop_size=500, num_geracoes=1000, 
+        env_params=params, pop_size=100, num_geracoes=1000, 
         guardar_em="agente_farol_evo.pkl",
-        parar_no_pico=False, score_alvo=AmbienteFarol.RECOMPENSA_FAROL, pico_gens=20
+        parar_no_pico=False, score_alvo=AmbienteFarol.RECOMPENSA_FAROL, pico_gens=20,
+        num_agents_per_eval=3 # FIX: Treinar com 3 para simular a apresentação
     )
 
 def treinar_recolecao_q():
@@ -193,7 +195,7 @@ def treinar_recolecao_q():
     score_alvo = (avg_recursos * 20) + 100
     Simulador.treinar_q(
         ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoQ,
-        env_params=params, num_agentes=2, num_episodios=10000, 
+        env_params=params, num_agentes=2, num_episodios=1000, 
         guardar_em="agente_recolecao_q.pkl",
         parar_no_pico=False, score_alvo=score_alvo, pico_eps=200
     )
@@ -204,9 +206,10 @@ def treinar_recolecao_evo():
     score_alvo = (avg_recursos * 20) + 100
     Simulador.treinar_genetico(
         ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoEvo, 
-        env_params=params, pop_size=250, num_geracoes=5000,
+        env_params=params, pop_size=100, num_geracoes=1000,
         guardar_em="agente_recolecao_evo.pkl",
-        parar_no_pico=False, score_alvo=score_alvo, pico_gens=30
+        parar_no_pico=False, score_alvo=score_alvo, pico_gens=30,
+        num_agents_per_eval=2 # FIX: Treinar com par (Equipa)
     )
 
 def main():
@@ -225,7 +228,9 @@ def main():
     elif MODO == "TREINO_ALL":
         # Apagar PKLs antigos para evitar conflitos de versão
         print("!!! A APAGAR ARQUIVOS ANTIGOS PARA GARANTIR CONSISTÊNCIA !!!")
-        for f in glob.glob("*.pkl"): os.remove(f)
+        for f in glob.glob("*.pkl"): 
+            try: os.remove(f)
+            except: pass
         
         print("--- MODO TREINO_ALL ---")
         tasks = [
