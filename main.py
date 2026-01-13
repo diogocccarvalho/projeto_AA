@@ -18,8 +18,8 @@ from agentes.agenteFarolEvo import AgenteFarolEvo
 from agentes.agenteRecolecaoEvo import AgenteRecolecaoEvo
 from agentes.agenteFixo import AgenteFixo
 
-def load_cerebro(file_path):
-    """Carrega o ficheiro pkl do agente."""
+def load_q_agente(file_path):
+    """Carrega o ficheiro pkl do agente Q."""
     if not os.path.exists(file_path):
         print(f"Aviso: '{file_path}' não encontrado. O agente será aleatório.")
         return None
@@ -27,6 +27,19 @@ def load_cerebro(file_path):
         with open(file_path, "rb") as f:
             agent = pickle.load(f)
             return agent
+    except Exception as e:
+        print(f"Erro ao carregar '{file_path}': {e}")
+        return None
+
+def load_evo_genes(file_path):
+    """Carrega os genes de um agente Evo a partir de um ficheiro pkl."""
+    if not os.path.exists(file_path):
+        print(f"Aviso: '{file_path}' não encontrado. O agente será aleatório.")
+        return None
+    try:
+        with open(file_path, "rb") as f:
+            genes = pickle.load(f)
+            return genes
     except Exception as e:
         print(f"Erro ao carregar '{file_path}': {e}")
         return None
@@ -54,31 +67,34 @@ def run_presentation():
     # ==========================================
     print("\n>>> CENÁRIO: FAROL (5 Rondas) <<<")
     sim = Simulador()
-    amb = AmbienteFarol(largura=50, altura=50, num_obstaculos=60) 
+    # Reduzi o número de obstáculos ligeiramente para melhor visualização
+    amb = AmbienteFarol(largura=50, altura=50, num_obstaculos=50) 
     gui = GuiFarol(amb, simulador=sim)
     sim.cria(amb)
     
     gui.cores_equipas[3] = "#2ECC71"  # Verde para o Fixo
     
-    cerebro_q = load_cerebro("agente_farol_q.pkl")
-    cerebro_evo = load_cerebro("agente_farol_evo.pkl")
+    agente_q = load_q_agente("agente_farol_q.pkl")
+    genes_evo = load_evo_genes("agente_farol_evo.pkl")
     
-    # Adicionar Agentes para Comparação
-    if cerebro_q: ag_q = cerebro_q.clone()
+    # Adicionar Agentes (1 de cada para comparação limpa)
+    if agente_q: ag_q = agente_q.clone()
     else: ag_q = AgenteFarolQ()
     ag_q.learning_mode = False
     sim.adicionar_agente(ag_q, equipa_id=1, verbose=False)
     
-    if cerebro_evo: 
-        try: ag_evo = cerebro_evo.clone()
+    ag_evo = AgenteFarolEvo()
+    if genes_evo:
+        try:
+            ag_evo.genes = genes_evo
         except ValueError as e:
             print(e)
-            ag_evo = AgenteFarolEvo()
-    else: ag_evo = AgenteFarolEvo()
+            # Mantém o agente aleatório se os genes forem incompatíveis
+    
     ag_evo.learning_mode = False
     sim.adicionar_agente(ag_evo, equipa_id=2, verbose=False)
     
-    sim.adicionar_agente(AgenteFixo(), equipa_id=3, verbose=False)
+    # Removi o Agente Fixo para não poluir o mapa
     
     try:
         for r in range(5):
@@ -89,7 +105,7 @@ def run_presentation():
             sim.executa_episodio(visualizador=gui, delay=0.01, max_passos=800)
             gui.root.update()
             scores = sim.obter_scores_equipas()
-            print(f"   Scores -> Q: {scores.get(1,0):.0f} | Evo: {scores.get(2,0):.0f} | Fixo: {scores.get(3,0):.0f}")
+            print(f"   Scores -> Q: {scores.get(1,0):.0f} | Evo: {scores.get(2,0):.0f}")
         gui.root.destroy()
     except tk.TclError:
         print("Janela Farol fechada.")
@@ -99,39 +115,37 @@ def run_presentation():
     # ==========================================
     print("\n>>> CENÁRIO: RECOLEÇÃO (5 Rondas) <<<")
     sim = Simulador()
-    amb = AmbienteRecolecao(largura=40, altura=40, num_obstaculos=40, num_recursos=30)
+    # Aumentei largura e reduzi obstáculos para facilitar navegação
+    amb = AmbienteRecolecao(largura=40, altura=40, num_obstaculos=30, num_recursos=30)
     gui = GuiRecolecao(amb, simulador=sim)
     sim.cria(amb)
     
     gui.cores_equipas[3] = "#9B59B6" # Roxo para Mista
     
-    cerebro_q = load_cerebro("agente_recolecao_q.pkl")
-    cerebro_evo = load_cerebro("agente_recolecao_evo.pkl")
+    agente_q = load_q_agente("agente_recolecao_q.pkl")
+    genes_evo = load_evo_genes("agente_recolecao_evo.pkl")
+    
+    # OTIMIZAÇÃO: Reduzir número de agentes para evitar "engarrafamentos" que causam loops
     
     # Equipa 1: Q-Learning (2 agentes)
     for _ in range(2):
-        ag = cerebro_q.clone() if cerebro_q else AgenteRecolecaoQ()
+        ag = agente_q.clone() if agente_q else AgenteRecolecaoQ()
         ag.learning_mode = False
         sim.adicionar_agente(ag, equipa_id=1, verbose=False)
 
-    # Equipa 2: Evolutivo (2 agentes treinados em equipa)
+    # Equipa 2: Evolutivo (2 agentes)
     for _ in range(2):
-        if cerebro_evo:
-            try: ag = cerebro_evo.clone()
-            except ValueError: ag = AgenteRecolecaoEvo()
-        else: ag = AgenteRecolecaoEvo()
-        ag.learning_mode = False
+        ag = AgenteRecolecaoEvo()
+        if genes_evo:
+            try:
+                ag.genes = genes_evo
+            except ValueError as e:
+                print(e)
+        # O AgenteRecolecaoEvo agora tem ruído interno no método .age()
+        ag.learning_mode = False 
         sim.adicionar_agente(ag, equipa_id=2, verbose=False)
         
-    # Equipa 3: Mista
-    ag_q_misto = cerebro_q.clone() if cerebro_q else AgenteRecolecaoQ()
-    ag_q_misto.learning_mode = False
-    sim.adicionar_agente(ag_q_misto, equipa_id=3, verbose=False)
-    
-    ag_evo_misto = cerebro_evo.clone() if cerebro_evo else AgenteRecolecaoEvo()
-    ag_evo_misto.learning_mode = False
-    sim.adicionar_agente(ag_evo_misto, equipa_id=3, verbose=False)
-    sim.adicionar_agente(AgenteFixo(), equipa_id=3, verbose=False)
+    # Removida Equipa Mista para clareza e performance
     
     try:
         for r in range(5):
@@ -142,7 +156,7 @@ def run_presentation():
             sim.executa_episodio(visualizador=gui, delay=0.01, max_passos=1000)
             gui.root.update()
             scores = sim.obter_scores_equipas()
-            print(f"   Scores -> Equipa Q: {scores.get(1,0):.0f} | Equipa Evo: {scores.get(2,0):.0f} | Equipa Mista: {scores.get(3,0):.0f}")
+            print(f"   Scores -> Equipa Q: {scores.get(1,0):.0f} | Equipa Evo: {scores.get(2,0):.0f}")
         gui.root.destroy()
     except tk.TclError:
         print("Janela Recoleção fechada.")
@@ -153,7 +167,6 @@ def run_presentation():
 
 def treinar_farol_q():
     params = {'largura': (20, 80), 'altura': (20, 80), 'num_obstaculos': (25, 200)}
-    # Treinar com 3 agentes para aprender a evitar tráfego dinâmico
     Simulador.treinar_q(
         ClasseAmbiente=AmbienteFarol, ClasseAgente=AgenteFarolQ,
         env_params=params, num_agentes=3, num_episodios=5000, 
@@ -164,7 +177,6 @@ def treinar_farol_q():
 
 def treinar_farol_evo():
     params = {'largura': (20, 80), 'altura': (20, 80), 'num_obstaculos': (25, 200)}
-    # Treino genético em equipas de 3 para consistência com o Q-Learning
     Simulador.treinar_genetico(
         ClasseAmbiente=AmbienteFarol, ClasseAgente=AgenteFarolEvo, 
         env_params=params, pop_size=100, num_geracoes=750, 
@@ -180,7 +192,7 @@ def treinar_recolecao_q():
     score_alvo = (avg_recursos * 20) + 100
     Simulador.treinar_q(
         ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoQ,
-        env_params=params, num_agentes=2, num_episodios=10000, 
+        env_params=params, num_agentes=2, num_episodios=5000, 
         guardar_em="agente_recolecao_q.pkl",
         parar_no_pico=False, score_alvo=score_alvo, pico_eps=200,
         dynamic_obstacles=True
@@ -190,10 +202,9 @@ def treinar_recolecao_evo():
     params = {'largura': (20, 50), 'altura': (20, 50), 'num_obstaculos': (20, 70), 'num_recursos': (20, 50)}
     avg_recursos = 35
     score_alvo = (avg_recursos * 20) + 100
-    # Treino genético em equipas de 2 (clones) para aprender partilha de espaço
     Simulador.treinar_genetico(
         ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoEvo, 
-        env_params=params, pop_size=100, num_geracoes=1000,
+        env_params=params, pop_size=50, num_geracoes=1000,
         guardar_em="agente_recolecao_evo.pkl",
         parar_no_pico=False, score_alvo=score_alvo, pico_gens=30,
         num_agents_per_eval=2,
@@ -214,8 +225,7 @@ def main():
         run_presentation()
     
     elif MODO == "TREINO_ALL":
-        # Apagar ficheiros antigos para garantir que as novas dimensões de rede são aplicadas
-        print("!!! LIMPANDO FICHEIROS PKL ANTIGOS PARA GARANTIR CONSISTÊNCIA !!!")
+        print("deleting old brains")
         for f in glob.glob("*.pkl"): 
             try: os.remove(f)
             except Exception: pass

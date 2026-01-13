@@ -1,5 +1,6 @@
 from agentes.agenteEvo import AgenteEvo
 import numpy as np
+import random
 
 class AgenteRecolecaoEvo(AgenteEvo):
     def __init__(self):
@@ -10,10 +11,6 @@ class AgenteRecolecaoEvo(AgenteEvo):
         #   - 8 (sensores)
         
         # Output: 6 Ações
-        
-        # AUMENTO DE CAPACIDADE: 
-        # Antes: 13 -> 16 -> 12 -> 6 (Pequeno demais)
-        # Agora: 13 -> 32 -> 20 -> 6 (Melhor para mapear obstáculos complexos)
         super().__init__(input_size=13, hidden1_size=32, hidden2_size=20, output_size=6)
         
         self.accoes = ["Norte", "Sul", "Este", "Oeste", "Recolher", "Depositar"]
@@ -25,7 +22,7 @@ class AgenteRecolecaoEvo(AgenteEvo):
         dir_ninho = np.array(obs['dir_ninho'])
         dir_recurso = np.array(obs['dir_recurso'])
         
-        # Normalização importante: converter booleano para float (0.0 ou 1.0)
+        # Normalização: converter booleano para float
         carga = np.array([1.0 if obs['carregando'] else 0.0])
         
         # Garantir ordem determinística dos sensores
@@ -38,3 +35,31 @@ class AgenteRecolecaoEvo(AgenteEvo):
             carga, 
             sensores
         ])
+
+    def age(self):
+        """
+        Sobrescreve o método age para adicionar 'ruído' na demonstração.
+        Isso impede que o agente fique preso em loops infinitos (oscilação)
+        quando enfrenta situações ambíguas (Perceptual Aliasing).
+        """
+        # Se NÃO estiver treinando, adicionar 5% de chance de movimento aleatório
+        # para quebrar loops de "vai-e-vem".
+        if not self.learning_mode and random.random() < 0.05: # 5% de ruído
+            return random.choice(self.accoes)
+
+        obs = self._formar_estado(self.ultima_observacao)
+        obs_vector = np.array(obs).flatten().reshape(1, -1)
+        
+        # --- Deep Forward Pass (2 Hidden Layers) ---
+        # Camada 1 (ReLU)
+        h1 = np.maximum(0, np.dot(obs_vector, self.W1) + self.b1)
+        
+        # Camada 2 (ReLU)
+        h2 = np.maximum(0, np.dot(h1, self.W2) + self.b2)
+        
+        # Output (Linear)
+        scores = np.dot(h2, self.W3) + self.b3
+        
+        # Escolher ação (Comportamento padrão Argmax)
+        acao_idx = np.argmax(scores)
+        return self.accoes[acao_idx]

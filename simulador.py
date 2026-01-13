@@ -261,14 +261,20 @@ class Simulador:
                         print(f"!!! GENÉTICO CONVERGIU (Ger {g+1}) - Média: {avg_s:.1f} !!!")
                         # Salvar antes de sair
                         if best_score_global > -float('inf'):
-                             if guardar_em: Simulador.guardar_agente(melhor_global, guardar_em)
+                             if guardar_em:
+                                with open(guardar_em, "wb") as f:
+                                    pickle.dump(melhor_global.genes, f)
+                                print(f"-> Genes do melhor agente guardados em: {guardar_em}")
                         break
 
                 if max_s > best_score_global:
                     best_score_global = max_s
                     idx = scores.index(max_s)
                     melhor_global = copy.deepcopy(populacao[idx])
-                    if guardar_em: Simulador.guardar_agente(melhor_global, guardar_em)
+                    if guardar_em:
+                        with open(guardar_em, "wb") as f:
+                            pickle.dump(melhor_global.genes, f)
+                        print(f"-> Genes do melhor agente guardados em: {guardar_em}")
 
                 populacao = Simulador._reproduzir_populacao(populacao, scores, pop_size)
 
