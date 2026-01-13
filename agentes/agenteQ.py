@@ -4,22 +4,17 @@ import copy
 
 class AgenteQ(Agente):
 
-    def __init__(self, alpha=0.2, gamma=0.9, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.999, exploration_beta=0.1):
+    def __init__(self, alpha=0.1, gamma=0.9, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.9995):
         super().__init__()
-
-        #parametros
         self.q_table = {}
-        self.alpha = alpha              # Taxa de aprendizagem (learning rate)
-        self.gamma = gamma              # Fator de desconto (discount factor)
-        self.epsilon = epsilon          # Taxa de exploração inicial (exploration rate)
-        self.epsilon_min = epsilon_min      # Taxa de exploração mínima
-        self.epsilon_decay = epsilon_decay  # Decaimento da taxa de exploração
-
-
+        self.alpha = alpha
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.epsilon_min = epsilon_min
+        self.epsilon_decay = epsilon_decay # Decay mais lento para aguentar o treino longo
+        
         self.estado_anterior = None
         self.acao_anterior = None
-        
-        #ações definidas pelas subclasses
         self.accoes = []
 
     def _formar_estado(self, obs):
@@ -31,32 +26,30 @@ class AgenteQ(Agente):
     def _atualizar_q_table(self, estado_atual, recompensa, accoes_validas):
         q_antigo = self.obter_q(self.estado_anterior, self.acao_anterior)
         
-        #estimar melhor ação
         q_valores_futuros = [self.obter_q(estado_atual, a) for a in accoes_validas]
         max_q_futuro = max(q_valores_futuros) if q_valores_futuros else 0.0
 
-        #bellman
         q_novo = q_antigo + self.alpha * (recompensa + self.gamma * max_q_futuro - q_antigo)
         self.q_table[(self.estado_anterior, self.acao_anterior)] = q_novo
 
     def _get_accoes_validas(self, estado):
-        # Por padrão, todas as ações são válidas. As subclasses podem sobrepor este método.
         return self.accoes
 
     def _escolher_melhor_acao(self, estado):
-        melhor_acao = None
         melhor_valor = -float('inf')
+        melhores_accoes = []
         
         accoes_validas = self._get_accoes_validas(estado)
-        random.shuffle(accoes_validas)
         
         for a in accoes_validas:
             q_val = self.obter_q(estado, a)
             if q_val > melhor_valor:
                 melhor_valor = q_val
-                melhor_acao = a
+                melhores_accoes = [a]
+            elif q_val == melhor_valor:
+                melhores_accoes.append(a)
         
-        return melhor_acao if melhor_acao is not None else random.choice(accoes_validas)
+        return random.choice(melhores_accoes) if melhores_accoes else random.choice(accoes_validas)
 
     def age(self):
         estado_atual = self._formar_estado(self.ultima_observacao)
@@ -68,18 +61,14 @@ class AgenteQ(Agente):
 
         self.estado_anterior = estado_atual
         self.acao_anterior = acao
-        
         return acao
 
     def avaliar_recompensa(self, recompensa, obs=None):
         if self.learning_mode and self.estado_anterior is not None:
-            # Se uma nova observação for passada, use-a. Senão, use a última guardada.
             observacao = obs if obs is not None else self.ultima_observacao
             if observacao:
                 estado_atual = self._formar_estado(observacao)
-                accoes_validas_futuras = self._get_accoes_validas(estado_atual)
-                self._atualizar_q_table(estado_atual, recompensa, accoes_validas_futuras)
-
+                self._atualizar_q_table(estado_atual, recompensa, self._get_accoes_validas(estado_atual))
         super().avaliar_recompensa(recompensa)
 
     def reset_episodio(self):
@@ -87,11 +76,16 @@ class AgenteQ(Agente):
         self.estado_anterior = None
         self.acao_anterior = None
         
-        #reduzir exploração
         if self.learning_mode and self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
+
+    def boost_exploration(self, valor=0.5):
+        """Reinjeta exploração quando o ambiente muda de dificuldade."""
+        self.epsilon = max(self.epsilon, valor)
+        # print(f"DEBUG: Epsilon Boosted to {self.epsilon}")
 
     def clone(self):
         new_agent = self.__class__()
         new_agent.q_table = copy.deepcopy(self.q_table)
+        new_agent.epsilon = 0.01 # Agente clonado (para demo) não explora
         return new_agent
