@@ -7,6 +7,7 @@ import tkinter as tk
 import argparse
 import webbrowser
 import subprocess
+import traceback
 from simulador import Simulador
 from gui import GuiRecolecao, GuiFarol
 from ambientes.ambiente_farol import AmbienteFarol
@@ -18,83 +19,100 @@ from agentes.agenteFarolEvo import AgenteFarolEvo
 from agentes.agenteRecolecaoEvo import AgenteRecolecaoEvo
 from agentes.agenteFixo import AgenteFixo
 
-def load_q_agente(file_path):
-    """Carrega o ficheiro pkl do agente Q."""
-    if not os.path.exists(file_path):
-        print(f"Aviso: '{file_path}' não encontrado. O agente será aleatório.")
+def resolve_path(file_name):
+    """Tenta encontrar o ficheiro no CWD ou na pasta do script."""
+    if os.path.exists(file_name):
+        return file_name
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    alt_path = os.path.join(script_dir, file_name)
+    if os.path.exists(alt_path):
+        return alt_path
+    return None
+
+def load_q_agente(file_name):
+    """Carrega o ficheiro pkl do agente Q com debug."""
+    print(f"\n[DEBUG] A carregar Agente Q: '{file_name}'...")
+    file_path = resolve_path(file_name)
+    
+    if not file_path:
+        print(f"[AVISO] Ficheiro '{file_name}' não encontrado.")
         return None
+
     try:
         with open(file_path, "rb") as f:
             agent = pickle.load(f)
+            # VERIFICAÇÃO DE INTEGRIDADE
+            q_len = len(agent.q_table) if hasattr(agent, 'q_table') else 0
+            print(f"[SUCESSO] Agente carregado. Estados na Memória (Q-Table): {q_len}")
+            if q_len == 0:
+                print("   >>> ALERTA: Este agente parece vazio (sem treino)!")
             return agent
     except Exception as e:
-        print(f"Erro ao carregar '{file_path}': {e}")
+        print(f"[ERRO] Falha ao carregar '{file_path}': {e}")
         return None
 
-def load_evo_genes(file_path):
-    """Carrega os genes de um agente Evo a partir de um ficheiro pkl."""
-    if not os.path.exists(file_path):
-        print(f"Aviso: '{file_path}' não encontrado. O agente será aleatório.")
+def load_evo_genes(file_name):
+    """Carrega os genes de um agente Evo a partir de um ficheiro pkl com debug."""
+    print(f"\n[DEBUG] A carregar Genes Evo: '{file_name}'...")
+    file_path = resolve_path(file_name)
+
+    if not file_path:
+        print(f"[AVISO] Ficheiro '{file_name}' não encontrado.")
         return None
+
     try:
         with open(file_path, "rb") as f:
             genes = pickle.load(f)
+            print(f"[SUCESSO] Genes carregados. Tamanho do Genoma: {len(genes)}")
             return genes
     except Exception as e:
-        print(f"Erro ao carregar '{file_path}': {e}")
+        print(f"[ERRO] Falha ao carregar '{file_path}': {e}")
         return None
 
 def show_graphs():
     """Abre os gráficos de progresso no navegador."""
     print("\n--- Gráficos de Treino ---")
-    graph_files = glob.glob("*_progress.png")
+    candidates = glob.glob("*_progress.png")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates += glob.glob(os.path.join(script_dir, "*_progress.png"))
+    graph_files = list(set(candidates))
+    
     if not graph_files:
         print("Nenhum gráfico encontrado.")
         return
     for file_path in graph_files:
-        try: 
-            webbrowser.open(f"file://{os.path.realpath(file_path)}")
-        except Exception: 
-            pass
+        try: webbrowser.open(f"file://{os.path.realpath(file_path)}")
+        except Exception: pass
 
 def run_presentation():
     """Executa a demonstração dos cenários com os agentes treinados."""
     print("\n=== INICIANDO APRESENTAÇÃO ===")
-    print("Nota: Certifique-se que correu TREINO_ALL recentemente para atualizar os cérebros.")
+    print("DICA: Se os agentes andarem aos círculos, corra '--modo TREINO_ALL' para recriar os cérebros.")
     
     # ==========================================
     # CENÁRIO 1: FAROL (5 Rondas)
     # ==========================================
     print("\n>>> CENÁRIO: FAROL (5 Rondas) <<<")
     sim = Simulador()
-    # Reduzi o número de obstáculos ligeiramente para melhor visualização
     amb = AmbienteFarol(largura=50, altura=50, num_obstaculos=50) 
     gui = GuiFarol(amb, simulador=sim)
     sim.cria(amb)
-    
-    gui.cores_equipas[3] = "#2ECC71"  # Verde para o Fixo
+    gui.cores_equipas[3] = "#2ECC71"
     
     agente_q = load_q_agente("agente_farol_q.pkl")
     genes_evo = load_evo_genes("agente_farol_evo.pkl")
     
-    # Adicionar Agentes (1 de cada para comparação limpa)
     if agente_q: ag_q = agente_q.clone()
     else: ag_q = AgenteFarolQ()
     ag_q.learning_mode = False
     sim.adicionar_agente(ag_q, equipa_id=1, verbose=False)
     
     ag_evo = AgenteFarolEvo()
-    if genes_evo:
-        try:
-            ag_evo.genes = genes_evo
-        except ValueError as e:
-            print(e)
-            # Mantém o agente aleatório se os genes forem incompatíveis
-    
+    if genes_evo is not None:
+        try: ag_evo.genes = genes_evo
+        except ValueError as e: print(f"[ERRO] Genes incompatíveis: {e}")
     ag_evo.learning_mode = False
     sim.adicionar_agente(ag_evo, equipa_id=2, verbose=False)
-    
-    # Removi o Agente Fixo para não poluir o mapa
     
     try:
         for r in range(5):
@@ -115,17 +133,13 @@ def run_presentation():
     # ==========================================
     print("\n>>> CENÁRIO: RECOLEÇÃO (5 Rondas) <<<")
     sim = Simulador()
-    # Aumentei largura e reduzi obstáculos para facilitar navegação
     amb = AmbienteRecolecao(largura=40, altura=40, num_obstaculos=30, num_recursos=30)
     gui = GuiRecolecao(amb, simulador=sim)
     sim.cria(amb)
-    
-    gui.cores_equipas[3] = "#9B59B6" # Roxo para Mista
+    gui.cores_equipas[3] = "#9B59B6"
     
     agente_q = load_q_agente("agente_recolecao_q.pkl")
     genes_evo = load_evo_genes("agente_recolecao_evo.pkl")
-    
-    # OTIMIZAÇÃO: Reduzir número de agentes para evitar "engarrafamentos" que causam loops
     
     # Equipa 1: Q-Learning (2 agentes)
     for _ in range(2):
@@ -136,17 +150,12 @@ def run_presentation():
     # Equipa 2: Evolutivo (2 agentes)
     for _ in range(2):
         ag = AgenteRecolecaoEvo()
-        if genes_evo:
-            try:
-                ag.genes = genes_evo
-            except ValueError as e:
-                print(e)
-        # O AgenteRecolecaoEvo agora tem ruído interno no método .age()
+        if genes_evo is not None:
+            try: ag.genes = genes_evo
+            except ValueError as e: print(e)
         ag.learning_mode = False 
         sim.adicionar_agente(ag, equipa_id=2, verbose=False)
         
-    # Removida Equipa Mista para clareza e performance
-    
     try:
         for r in range(5):
             print(f"Ronda {r+1}/5")
@@ -245,6 +254,10 @@ def main():
                 subprocess.run(command, check=True)
             except Exception as e: 
                 print(f"Erro na tarefa {modo_task}: {e}")
+                # Fallback
+                print(f"Tentando fallback para 'python'...")
+                try: subprocess.run(["python", "main.py", "--modo", modo_task, "--cenario", cenario_task], check=True)
+                except Exception as e2: print(f"Erro FATAL: {e2}")
 
     elif MODO == "TREINO_Q":
         if CENARIO == "FAROL": treinar_farol_q()

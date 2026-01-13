@@ -1,7 +1,6 @@
 import random
 import numpy as np
 from ambientes.ambiente import Ambiente
-from agentes.agenteRecolecaoEvo import AgenteRecolecaoEvo
 
 class AmbienteRecolecao(Ambiente):
     def __init__(self, largura=20, altura=20, num_recursos=10, num_obstaculos=10):

@@ -10,8 +10,12 @@ class AgenteFarolQ(AgenteQ):
         if obs is None:
             return ((0, 0), tuple())
 
+        # FIX: Forçar conversão para int padrão do Python
+        # Isso evita que numpy.int64 cause erros de chave na Q-Table carregada
+        dx, dy = obs['direcao_alvo']
+        dir_alvo = (int(dx), int(dy))
+
         # Usamos sorted para consistência e removemos acao_anterior
-        # para diminuir o espaço de estados e acelerar a convergência.
         sensores_tuple = tuple(sorted(obs['sensores'].items()))
         
-        return (obs['direcao_alvo'], sensores_tuple)
+        return (dir_alvo, sensores_tuple)

@@ -9,7 +9,6 @@ class AgenteEvo(Agente):
         self.h2_size = hidden2_size
         self.output_size = output_size
         
-        # Calcular tamanhos das camadas
         self.s1 = input_size * hidden1_size
         self.sb1 = hidden1_size
         self.s2 = hidden1_size * hidden2_size
@@ -18,33 +17,25 @@ class AgenteEvo(Agente):
         self.sb3 = output_size
         
         self.num_genes = self.s1 + self.sb1 + self.s2 + self.sb2 + self.s3 + self.sb3
-
-        # Usamos uma variância muito baixa (0.05) para evitar saturação inicial.
-        self._genes = np.random.randn(self.num_genes) * 0.05
         
+        # Initialization
+        self._genes = np.random.randn(self.num_genes) * 0.05
         self._decodificar_genes()
 
     def _decodificar_genes(self):
-        """Reconstroi as matrizes de pesos para serem usadas no feedforward"""
         idx = 0
-        
-        # W1, b1
         end = idx + self.s1
         self.W1 = self._genes[idx:end].reshape(self.input_size, self.h1_size)
         idx = end
         end = idx + self.sb1
         self.b1 = self._genes[idx:end].reshape(1, self.h1_size)
         idx = end
-        
-        # W2, b2
         end = idx + self.s2
         self.W2 = self._genes[idx:end].reshape(self.h1_size, self.h2_size)
         idx = end
         end = idx + self.sb2
         self.b2 = self._genes[idx:end].reshape(1, self.h2_size)
         idx = end
-        
-        # W3, b3
         end = idx + self.s3
         self.W3 = self._genes[idx:end].reshape(self.h2_size, self.output_size)
         idx = end
@@ -57,15 +48,8 @@ class AgenteEvo(Agente):
 
     @genes.setter
     def genes(self, novos_genes):
-        # --- FIX: CRITICAL SAFETY CHECK ---
-        # Impede que o agente carregue um cérebro incompatível e fique "estúpido" sem avisar
         if len(novos_genes) != self.num_genes:
-            raise ValueError(
-                f"\n!!! ERRO CRÍTICO DE ARQUITETURA !!!\n"
-                f"O ficheiro .pkl tem {len(novos_genes)} genes, mas o código espera {self.num_genes}.\n"
-                f"SOLUÇÃO: Apague os ficheiros .pkl antigos e corra o treino novamente."
-            )
-            
+            raise ValueError(f"Gene mismatch: Got {len(novos_genes)}, expected {self.num_genes}")
         self._genes = np.array(novos_genes)
         self._decodificar_genes()
 
@@ -81,17 +65,15 @@ class AgenteEvo(Agente):
         obs = self._formar_estado(self.ultima_observacao)
         obs_vector = np.array(obs).flatten().reshape(1, -1)
         
-        # --- Deep Forward Pass (2 Hidden Layers) ---
-        # Camada 1 (ReLU)
+        # Forward Pass
         h1 = np.maximum(0, np.dot(obs_vector, self.W1) + self.b1)
-        
-        # Camada 2 (ReLU)
         h2 = np.maximum(0, np.dot(h1, self.W2) + self.b2)
-        
-        # Output (Linear)
         scores = np.dot(h2, self.W3) + self.b3
         
-        # Escolher ação
+        # DEBUG: Uncomment this to see what the brain is thinking!
+        # if not self.learning_mode:
+        #    print(f"DEBUG BRAIN: {scores.flatten()} -> Choice: {np.argmax(scores)}")
+
         acao_idx = np.argmax(scores)
         if hasattr(self, 'accoes') and acao_idx < len(self.accoes):
             return self.accoes[acao_idx]

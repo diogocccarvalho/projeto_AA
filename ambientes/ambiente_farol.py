@@ -1,7 +1,6 @@
 import random
 import numpy as np
 from ambientes.ambiente import Ambiente
-from agentes.agenteFarolEvo import AgenteFarolEvo
 
 class AmbienteFarol(Ambiente):
     # Constante para referência no treino e lógica de recompensas
@@ -39,7 +38,7 @@ class AmbienteFarol(Ambiente):
 
     def agir(self, agente, accao):
         ax, ay = self._posicoes_agentes[agente]
-        is_evo = isinstance(agente, AgenteFarolEvo)
+        is_evo = hasattr(agente, 'genes')
         
         movs = {"Norte":(0,-1), "Sul":(0,1), "Este":(1,0), "Oeste":(-1,0)}
         if accao in movs:
