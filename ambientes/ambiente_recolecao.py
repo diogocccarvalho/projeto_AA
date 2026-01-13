@@ -10,6 +10,14 @@ class AmbienteRecolecao(Ambiente):
         self.agentes_carga = {}
         self.reset()
 
+    def reconfigurar(self, **kwargs):
+        """Implementação obrigatória do método abstrato da classe Ambiente."""
+        self.largura = kwargs.get('largura', self.largura)
+        self.altura = kwargs.get('altura', self.altura)
+        self.num_recursos_inicial = kwargs.get('num_recursos', self.num_recursos_inicial)
+        self.num_obstaculos_inicial = kwargs.get('num_obstaculos', self.num_obstaculos_inicial)
+        self.reset()
+
     def observacao_para(self, agente):
         if agente not in self._posicoes_agentes: return None
         ax, ay = self._posicoes_agentes[agente]
@@ -20,6 +28,7 @@ class AmbienteRecolecao(Ambiente):
             if outro != agente: bloqueios.add(pos)
 
         sensores = {}
+        # Manter a lógica de sensores consistente com os agentes Evo
         dirs = [("Norte",(0,-1)),("Sul",(0,1)),("Este",(1,0)),("Oeste",(-1,0)),
                 ("NE",(1,-1)),("SE",(1,1)),("SW",(-1,1)),("NW",(-1,-1))]
         for nome, (dx, dy) in dirs:
@@ -28,6 +37,7 @@ class AmbienteRecolecao(Ambiente):
 
         # Direções
         dir_ninho = (np.sign(self.pos_ninho[0]-ax), np.sign(self.pos_ninho[1]-ay))
+        # Fallback: se não houver recursos, a direção aponta para a posição atual (0,0)
         rec = min(self.recursos, key=lambda r: abs(ax-r[0])+abs(ay-r[1])) if self.recursos else (ax, ay)
         dir_recurso = (np.sign(rec[0]-ax), np.sign(rec[1]-ay))
 
@@ -37,7 +47,8 @@ class AmbienteRecolecao(Ambiente):
     def agir(self, agente, accao):
         ax, ay = self._posicoes_agentes[agente]
         carga = self.agentes_carga[agente]
-        is_evo = isinstance(agente, AgenteRecolecaoEvo)
+        # Ativamos o shaping para todos para ajudar a evolução a encontrar objetivos
+        # is_evo = isinstance(agente, AgenteRecolecaoEvo) 
 
         if accao in ["Norte", "Sul", "Este", "Oeste"]:
             movs = {"Norte":(0,-1), "Sul":(0,1), "Este":(1,0), "Oeste":(-1,0)}
@@ -48,8 +59,17 @@ class AmbienteRecolecao(Ambiente):
             
             self._posicoes_agentes[agente] = (nx, ny)
             reward = -0.1
-            if not is_evo: # Shaping apenas para Q-Learning
-                alvo = self.pos_ninho if carga else min(self.recursos, key=lambda r: abs(nx-r[0])+abs(ny-r[1]))
+            
+            # Reward Shaping: Agora aplicado a Q-Learning e Evolutivo
+            if carga:
+                alvo = self.pos_ninho
+            elif self.recursos:
+                alvo = min(self.recursos, key=lambda r: abs(nx-r[0])+abs(ny-r[1]))
+            else:
+                alvo = None
+            
+            if alvo:
+                # O shaping guia o agente para o objetivo
                 reward += (abs(ax-alvo[0])+abs(ay-alvo[1]) - (abs(nx-alvo[0])+abs(ny-alvo[1]))) * 0.5
             return reward
 
@@ -57,6 +77,8 @@ class AmbienteRecolecao(Ambiente):
             self.recursos.remove((ax, ay)); self.agentes_carga[agente] = True; return 20.0
         if accao == "Depositar" and carga and (ax, ay) == self.pos_ninho:
             self.agentes_carga[agente] = False; return 100.0
+        
+        # Penalidade por ação inválida (tentar recolher onde não há nada)
         return -1.0
 
     def reset(self):

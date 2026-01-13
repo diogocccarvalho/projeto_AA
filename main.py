@@ -156,9 +156,10 @@ def treinar_farol_q():
     # Treinar com 3 agentes para aprender a evitar tráfego dinâmico
     Simulador.treinar_q(
         ClasseAmbiente=AmbienteFarol, ClasseAgente=AgenteFarolQ,
-        env_params=params, num_agentes=3, num_episodios=20000, 
+        env_params=params, num_agentes=3, num_episodios=5000, 
         guardar_em="agente_farol_q.pkl",
-        parar_no_pico=False, score_alvo=AmbienteFarol.RECOMPENSA_FAROL, pico_eps=200
+        parar_no_pico=False, score_alvo=AmbienteFarol.RECOMPENSA_FAROL, pico_eps=200,
+        dynamic_obstacles=True
     )
 
 def treinar_farol_evo():
@@ -166,10 +167,11 @@ def treinar_farol_evo():
     # Treino genético em equipas de 3 para consistência com o Q-Learning
     Simulador.treinar_genetico(
         ClasseAmbiente=AmbienteFarol, ClasseAgente=AgenteFarolEvo, 
-        env_params=params, pop_size=500, num_geracoes=1000, 
+        env_params=params, pop_size=100, num_geracoes=750, 
         guardar_em="agente_farol_evo.pkl",
         parar_no_pico=False, score_alvo=AmbienteFarol.RECOMPENSA_FAROL, pico_gens=20,
-        num_agents_per_eval=3
+        num_agents_per_eval=3,
+        dynamic_obstacles=True
     )
 
 def treinar_recolecao_q():
@@ -180,7 +182,8 @@ def treinar_recolecao_q():
         ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoQ,
         env_params=params, num_agentes=2, num_episodios=10000, 
         guardar_em="agente_recolecao_q.pkl",
-        parar_no_pico=False, score_alvo=score_alvo, pico_eps=200
+        parar_no_pico=False, score_alvo=score_alvo, pico_eps=200,
+        dynamic_obstacles=True
     )
 
 def treinar_recolecao_evo():
@@ -190,10 +193,11 @@ def treinar_recolecao_evo():
     # Treino genético em equipas de 2 (clones) para aprender partilha de espaço
     Simulador.treinar_genetico(
         ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoEvo, 
-        env_params=params, pop_size=250, num_geracoes=5000,
+        env_params=params, pop_size=100, num_geracoes=1000,
         guardar_em="agente_recolecao_evo.pkl",
         parar_no_pico=False, score_alvo=score_alvo, pico_gens=30,
-        num_agents_per_eval=2
+        num_agents_per_eval=2,
+        dynamic_obstacles=True
     )
 
 def main():

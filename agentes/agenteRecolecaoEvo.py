@@ -9,9 +9,16 @@ class AgenteRecolecaoEvo(AgenteEvo):
 
     def _formar_estado(self, obs):
         if obs is None: return np.zeros(13)
+        dir_ninho = np.array(obs['dir_ninho'])
+        dir_recurso = np.array(obs['dir_recurso'])
+        carga = np.array([1.0 if obs['carregando'] else 0.0])
+
+        sensores_ordenados = [v for k, v in sorted(obs['sensores'].items())]
+        sensores = np.array(sensores_ordenados)
+
         return np.concatenate([
-            obs['dir_ninho'], 
-            obs['dir_recurso'], 
-            [1.0 if obs['carregando'] else 0.0], 
-            list(obs['sensores'].values())
+            dir_ninho, 
+            dir_recurso, 
+            carga, 
+            sensores
         ])
