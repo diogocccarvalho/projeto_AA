@@ -69,7 +69,7 @@ class Simulador:
     def _executa_passo(self, visualizador=None, delay=0.0):
         if visualizador:
             visualizador.desenhar()
-            if delay > 0: time.sleep(delay)
+            time.sleep(0.1)
         
         self._ambiente.atualizacao()
         
@@ -187,6 +187,14 @@ class Simulador:
                 epsilon_atual = sim._agentes[0].epsilon if hasattr(sim._agentes[0], 'epsilon') else 0
                 print(f"Ep {i+1}: Média Score={med:.1f} | Epsilon={epsilon_atual:.3f}")
                 
+                # --- OTIMIZAÇÃO: Parar no Pico ---
+                if parar_no_pico and score_alvo is not None and med >= score_alvo:
+                    print(f"!!! PICO ALCANÇADO (Ep {i+1}) - Score Médio: {med:.1f} !!!")
+                    if guardar_em:
+                        top_ag = max(sim._agentes, key=lambda a: a.recompensa_total)
+                        Simulador.guardar_agente(top_ag, guardar_em)
+                    break
+                
                 # Guardar melhor
                 if guardar_em:
                     top_ag = max(sim._agentes, key=lambda a: a.recompensa_total)
@@ -248,6 +256,13 @@ class Simulador:
 
                 if (g+1) % 10 == 0:
                     print(f"Ger {g+1}: Melhor={max_s:.1f}, Média={avg_s:.1f}")
+                    # --- OTIMIZAÇÃO: Parar no Pico ---
+                    if parar_no_pico and score_alvo is not None and avg_s >= score_alvo:
+                        print(f"!!! GENÉTICO CONVERGIU (Ger {g+1}) - Média: {avg_s:.1f} !!!")
+                        # Salvar antes de sair
+                        if best_score_global > -float('inf'):
+                             if guardar_em: Simulador.guardar_agente(melhor_global, guardar_em)
+                        break
 
                 if max_s > best_score_global:
                     best_score_global = max_s

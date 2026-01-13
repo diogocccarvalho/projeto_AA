@@ -16,7 +16,7 @@ class AmbienteRecolecao(Ambiente):
         self.altura = kwargs.get('altura', self.altura)
         self.num_recursos_inicial = kwargs.get('num_recursos', self.num_recursos_inicial)
         self.num_obstaculos_inicial = kwargs.get('num_obstaculos', self.num_obstaculos_inicial)
-        self.reset()
+        # self.reset() -> REMOVIDO PARA EVITAR DUPLO RESET
 
     def observacao_para(self, agente):
         if agente not in self._posicoes_agentes: return None
