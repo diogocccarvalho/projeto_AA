@@ -1,0 +1,155 @@
+# 🤖 Autonomous Agents Project: Technical Documentation
+
+## 1. Project Overview
+
+This project implements and compares two distinct Reinforcement Learning (RL) approaches—**Tabular Q-Learning** and **Evolutionary Neural Networks**—across two dynamic environments: **Farol** (Goal Navigation) and **Recoleção** (Resource Gathering).
+
+The core philosophy of this implementation is **Modularity, Robustness, and Optimization**. The system is built to handle dynamic difficulty adjustment (Curriculum Learning), parallel processing for heavy computations, and cross-compiler optimization (PyPy vs. CPython).
+
+---
+
+## 2. System Architecture & Object-Oriented Design
+
+The codebase relies heavily on **Inheritance** and **Abstraction** to ensure scalability and code reuse.
+
+### 2.1. The Simulation Engine (`simulador.py`)
+
+The `Simulador` class is the central orchestrator. It is agnostic to the type of agent or environment.
+
+* **Responsibilities:** Manages the game loop, time steps, agent placement, and collision detection.
+* **Abstraction:** It interacts with agents and environments purely through their abstract base methods (`age()`, `agir()`, `observacao()`), allowing hot-swapping of scenarios without changing the engine core.
+
+### 2.2. Environment Hierarchy
+
+All environments inherit from the abstract base class `Ambiente`.
+
+* **`Ambiente` (Base):** Defines the interface for `reset()`, `agir()`, and `observacao_para()`.
+* **`AmbienteFarol`:** Implements sparse rewards (only rewarding upon reaching the specific coordinate) and static obstacles.
+* **`AmbienteRecolecao`:** Implements dense rewards (gathering multiple items) and manages the consumption/disappearance of resources.
+
+### 2.3. Agent Hierarchy
+
+We utilize a deep inheritance tree to separate generic RL logic from scenario-specific sensors.
+
+* **`Agente` (Base):** Abstract class defining the lifecycle (`observacao`, `age`, `recompensa`).
+* **`AgenteQ`:** Implements the Q-Learning mathematics (Bellman equation, Q-Table management, Epsilon-Greedy strategy).
+* `AgenteFarolQ` / `AgenteRecolecaoQ`: Concrete implementations that define how sensory inputs are hashed into states (e.g., converting coordinates to tuples).
+
+
+* **`AgenteEvo`:** Implements a Feed-Forward Neural Network. It does *not* learn via backpropagation but via genetic mutation of weights.
+* `AgenteFarolEvo` / `AgenteRecolecaoEvo`: Define the input layer size and sensor interpretation.
+
+
+
+
+
+---
+
+## 3. "Smart" Engineering & Optimization
+
+This is the technical highlight of the project. We didn't just implement algorithms; we engineered a training pipeline.
+
+### 3.1. Curriculum Learning (Dynamic Difficulty)
+
+Agents are not thrown into complex maps immediately. We implemented a **3-Phase Curriculum** in `simulador.py`:
+
+1. **Phase 1 (Kindergarten):** 0 Obstacles. Agents learn the fundamental goal (move towards target/resource).
+2. **Phase 2 (Primary School):** 50% Obstacles. Agents must learn to navigate around simple blocks.
+3. **Phase 3 (Real World):** 100% Obstacles. Full complexity.
+
+**Key Insight:** When the phase changes, the agent's performance score usually **drops** on the graphs. To counter this, we programmatically trigger an **"Exploration Boost"** (re-injecting entropy/epsilon) at phase transitions to force the agents to adapt to new threats rather than getting stuck in old habits.
+
+### 3.2. Compiler Swapping (`main.py`)
+
+We utilize distinct Python interpreters for distinct agent types to maximize training speed:
+
+* **Q-Learning runs on PyPy3:** Q-Learning involves millions of dictionary lookups and native Python loops. **PyPy (JIT Compiler)** speeds this up by ~10x compared to standard Python.
+* **Evolutionary runs on Standard Python (CPython):** Since Evo agents rely on `numpy` for matrix multiplication (Neural Net forward pass), and `numpy` is largely C-optimized, standard Python is efficient and compatible.
+
+### 3.3. Multiprocessing & Parallelization
+
+Genetic algorithms require evaluating hundreds of agents per generation. Doing this sequentially is too slow.
+
+* **Implementation:** We use `concurrent.futures.ProcessPoolExecutor` in `simulador.py`.
+* **Mechanism:** The population is split across all available CPU cores. Each core runs an independent instance of the environment.
+
+### 3.4. Robustness via Multi-Instance Evaluation
+
+A major flaw in basic genetic algorithms is the "Lucky Survivor" problem (a bad agent gets an empty map and scores high).
+
+* **The Fix:** In `_avaliar_individuo_wrapper`, every single agent is tested on **3 different random maps** during training. Their fitness score is the *average* of these runs. This filters out "lucky" agents and selects only strictly robust behaviors.
+
+### 3.5. Windowed Saving Strategy
+
+Saving the "All-time Best" agent is dangerous in Curriculum Learning (an agent from Phase 1 might have a higher score than a genius agent in Phase 3 due to difficulty).
+
+* **Solution:** We implemented a rolling window save system. We reset the "best candidate" tracker periodically, ensuring that the final saved brain is the best performer *of the hardest difficulty phase*, not a relic from the easy phase.
+
+---
+
+## 4. Agent Behavior & AI Logic
+
+### 4.1. Q-Learning Agents
+
+* **Logic:** Tabular Q-Learning.
+* **State Space:** Relative direction to target + Local sensor data (8-direction proximity).
+* **Challenge:** "State Aliasing" (different locations look identical).
+* **Solution:**
+1. **Slow Epsilon Decay:** We decay exploration very slowly (`0.999`) to ensure convergence only after extensive mapping.
+2. **Presentation Jitter:** During the final demo (`--modo APRESENTACAO`), we inject a tiny amount of noise (`epsilon=0.05`). This prevents the agent from getting stuck in infinite loops between two aliased states (a common issue in deterministic grid worlds).
+
+
+
+### 4.2. Evolutionary Agents
+
+* **Logic:** Genetic Algorithm optimizing a Neural Network (MLP).
+* **Genome:** The weights and biases of the network are flattened into a single "DNA" array.
+* **Selection:** Tournament Selection + Elitism (Top % always survive).
+* **Mutation:** Random Gaussian noise added to weights.
+* **Behavior:** Unlike Q-Learning, these agents don't "know" the map. They react purely to visual inputs, developing "boid-like" fluid movement.
+
+---
+
+## 5. Presentation & Analysis Tools
+
+### 5.1. Presentation Mode
+
+Running `main.py --modo APRESENTACAO` loads the serialized brains (`.pkl`) and visualizes them using `tkinter`.
+
+* **Visuals:** Agents are color-coded. Environments are rendered with grid lines and dynamic entities.
+* **Integrity Check:** The loader validates the `.pkl` files to ensure the matrix dimensions match the agent architecture before running.
+
+### 5.2. Data Visualization
+
+During training, the system tracks metrics (Max Score, Average Score) and generates smoothing graphs saved as `_progress.png`.
+
+* These graphs visualize the "Learning Curve."
+* **Observation:** You can visibly see the "Dips" in the graph where the Curriculum Phase changes (new obstacles added), followed by a recovery as the agents adapt.
+
+### 5.3. Randomization
+
+To prove the agents aren't memorizing a fixed path:
+
+* **Maps:** Generated procedurally every episode.
+* **Spawns:** Agent start positions and goal positions are randomized.
+* **Obstacles:** Randomly distributed based on density settings.
+
+---
+
+## 6. How to Run
+
+**1. Full Training Pipeline (Recommended):**
+This cleans old brains and runs the full curriculum for all agents, handling interpreter switching automatically.
+
+```bash
+python main.py --modo TREINO_ALL
+
+```
+
+**2. Presentation Mode:**
+Visualizes the results of the training.
+
+```bash
+python main.py --modo APRESENTACAO
+
+```

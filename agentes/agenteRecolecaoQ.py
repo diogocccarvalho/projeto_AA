@@ -4,7 +4,7 @@ import random
 class AgenteRecolecaoQ(AgenteQ):
     def __init__(self, alpha=0.1, gamma=0.9, epsilon=1.0):
         # CORREÇÃO: epsilon_decay alterado de 0.999 (padrão) para 0.99975
-        super().__init__(alpha=alpha, gamma=gamma, epsilon=epsilon, epsilon_decay=0.99975)
+        super().__init__(alpha=alpha, gamma=gamma, epsilon=epsilon, epsilon_decay=0.999)
         self.accoes = ["Norte", "Sul", "Este", "Oeste", "Recolher", "Depositar"]
 
     def _formar_estado(self, obs):

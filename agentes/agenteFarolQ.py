@@ -2,8 +2,8 @@ from agentes.agenteQ import AgenteQ
 
 class AgenteFarolQ(AgenteQ):
     def __init__(self, alpha=0.1, gamma=0.9, epsilon=1.0):
-        # Ajustamos o epsilon_decay para 0.99975 (igual à recoleção)
-        super().__init__(alpha=alpha, gamma=gamma, epsilon=epsilon, epsilon_decay=0.99975)
+        # CORREÇÃO: Decay ajustado para 0.999 para garantir convergência mais robusta
+        super().__init__(alpha=alpha, gamma=gamma, epsilon=epsilon, epsilon_decay=0.999)
         self.accoes = ["Norte", "Sul", "Este", "Oeste"]
 
     def _formar_estado(self, obs):

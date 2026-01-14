@@ -105,6 +105,10 @@ def run_presentation():
     if agente_q: ag_q = agente_q.clone()
     else: ag_q = AgenteFarolQ()
     ag_q.learning_mode = False
+    
+    # CORREÇÃO: Pequeno epsilon para evitar loops infinitos em estados aliased
+    ag_q.epsilon = 0.05 
+    
     sim.adicionar_agente(ag_q, equipa_id=1, verbose=False)
     
     ag_evo = AgenteFarolEvo()
@@ -145,6 +149,8 @@ def run_presentation():
     for _ in range(2):
         ag = agente_q.clone() if agente_q else AgenteRecolecaoQ()
         ag.learning_mode = False
+        # CORREÇÃO: Pequeno epsilon aqui também
+        ag.epsilon = 0.05
         sim.adicionar_agente(ag, equipa_id=1, verbose=False)
 
     # Equipa 2: Evolutivo (2 agentes)
@@ -178,7 +184,7 @@ def treinar_farol_q():
     params = {'largura': (20, 80), 'altura': (20, 80), 'num_obstaculos': (25, 200)}
     Simulador.treinar_q(
         ClasseAmbiente=AmbienteFarol, ClasseAgente=AgenteFarolQ,
-        env_params=params, num_agentes=3, num_episodios=5000, 
+        env_params=params, num_agentes=3, num_episodios=100000, 
         guardar_em="agente_farol_q.pkl",
         parar_no_pico=False, score_alvo=AmbienteFarol.RECOMPENSA_FAROL, pico_eps=200,
         dynamic_obstacles=True
@@ -188,7 +194,7 @@ def treinar_farol_evo():
     params = {'largura': (20, 80), 'altura': (20, 80), 'num_obstaculos': (25, 200)}
     Simulador.treinar_genetico(
         ClasseAmbiente=AmbienteFarol, ClasseAgente=AgenteFarolEvo, 
-        env_params=params, pop_size=100, num_geracoes=750, 
+        env_params=params, pop_size=250, num_geracoes=5000, 
         guardar_em="agente_farol_evo.pkl",
         parar_no_pico=False, score_alvo=AmbienteFarol.RECOMPENSA_FAROL, pico_gens=20,
         num_agents_per_eval=3,
@@ -201,7 +207,7 @@ def treinar_recolecao_q():
     score_alvo = (avg_recursos * 20) + 100
     Simulador.treinar_q(
         ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoQ,
-        env_params=params, num_agentes=2, num_episodios=5000, 
+        env_params=params, num_agentes=2, num_episodios=100000, 
         guardar_em="agente_recolecao_q.pkl",
         parar_no_pico=False, score_alvo=score_alvo, pico_eps=200,
         dynamic_obstacles=True
@@ -213,7 +219,7 @@ def treinar_recolecao_evo():
     score_alvo = (avg_recursos * 20) + 100
     Simulador.treinar_genetico(
         ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoEvo, 
-        env_params=params, pop_size=50, num_geracoes=1000,
+        env_params=params, pop_size=250, num_geracoes=10000,
         guardar_em="agente_recolecao_evo.pkl",
         parar_no_pico=False, score_alvo=score_alvo, pico_gens=30,
         num_agents_per_eval=2,
