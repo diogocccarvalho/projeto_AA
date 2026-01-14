@@ -219,7 +219,7 @@ def treinar_recolecao_evo():
     score_alvo = (avg_recursos * 20) + 100
     Simulador.treinar_genetico(
         ClasseAmbiente=AmbienteRecolecao, ClasseAgente=AgenteRecolecaoEvo, 
-        env_params=params, pop_size=250, num_geracoes=10000,
+        env_params=params, pop_size=250, num_geracoes=2500,
         guardar_em="agente_recolecao_evo.pkl",
         parar_no_pico=False, score_alvo=score_alvo, pico_gens=30,
         num_agents_per_eval=2,

@@ -43,6 +43,12 @@ class Ambiente(ABC):
             return False  # Colisão com obstáculo
         return True
 
+    def _gerar_posicao_livre(self, posicoes_proibidas):
+        while True:
+            pos = (self.np_random.randint(self.largura), self.np_random.randint(self.altura))
+            if pos not in posicoes_proibidas and self._is_posicao_valida(pos):
+                return pos
+
     def _mover_agente(self, agente, nova_pos):
         if self._is_posicao_valida(nova_pos):
             self._posicoes_agentes[agente] = nova_pos

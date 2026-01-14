@@ -1,4 +1,3 @@
-import random
 import numpy as np
 from ambientes.ambiente import Ambiente
 
@@ -7,6 +6,7 @@ class AmbienteRecolecao(Ambiente):
         super().__init__(largura, altura)
         self.num_recursos_inicial, self.num_obstaculos_inicial = num_recursos, num_obstaculos
         self.agentes_carga = {}
+        self.np_random = np.random.RandomState()
         self.reset()
 
     def reconfigurar(self, **kwargs):
@@ -82,9 +82,25 @@ class AmbienteRecolecao(Ambiente):
 
     def reset(self):
         self.terminou = False
-        self.pos_ninho = (random.randint(0, self.largura-1), random.randint(0, self.altura-1))
-        self.obstaculos = { (random.randint(0, self.largura-1), random.randint(0, self.altura-1)) for _ in range(self.num_obstaculos_inicial) }
-        self.recursos = { (random.randint(0, self.largura-1), random.randint(0, self.altura-1)) for _ in range(self.num_recursos_inicial) }
+        posicoes_proibidas = set()
+
+        self.pos_ninho = self._gerar_posicao_livre(posicoes_proibidas)
+        posicoes_proibidas.add(self.pos_ninho)
+
+        self.obstaculos = set()
+        for _ in range(self.num_obstaculos_inicial):
+            pos_obstaculo = self._gerar_posicao_livre(posicoes_proibidas)
+            self.obstaculos.add(pos_obstaculo)
+            posicoes_proibidas.add(pos_obstaculo)
+
+        self.recursos = set()
+        for _ in range(self.num_recursos_inicial):
+            pos_recurso = self._gerar_posicao_livre(posicoes_proibidas)
+            self.recursos.add(pos_recurso)
+            posicoes_proibidas.add(pos_recurso)
+
         for ag in self._posicoes_agentes:
-            self._posicoes_agentes[ag] = (random.randint(0, self.largura-1), random.randint(0, self.altura-1))
+            pos_agente = self._gerar_posicao_livre(posicoes_proibidas)
+            self._posicoes_agentes[ag] = pos_agente
+            posicoes_proibidas.add(pos_agente)
             self.agentes_carga[ag] = False
